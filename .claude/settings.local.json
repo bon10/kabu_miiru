@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app:*)",
+      "Bash(npm install:*)",
+      "mcp__notionApi__API-retrieve-a-page",
+      "mcp__notionApi__API-get-block-children",
+      "mcp__notionApi__API-post-search",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm dlx prisma:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "notionApi"
+  ]
+}

@@ -1,0 +1,1153 @@
+openapi: 3.0.3
+info:
+  title: 株みーる API
+  description: |
+    株式ポートフォリオの管理機能を提供するRESTful API
+
+    ## 主要機能
+    - 📋 銘柄一覧管理
+    - 📊 合計情報表示
+    - 📈 ポートフォリオ分析
+    - 📝 取引履歴管理
+    - 💹 現在値取得
+
+    ## 技術スタック
+    - Next.js 15 + TypeScript
+    - Prisma ORM + MySQL
+    - Tailwind CSS + Shadcn/ui
+  version: 1.0.0
+  contact:
+    name: API Support
+    url: https://example.com/support
+servers:
+  - url: http://localhost:3300/api
+    description: 開発環境
+  - url: https://your-app.vercel.app/api
+    description: 本番環境
+
+tags:
+  - name: stocks
+    description: 銘柄一覧管理
+  - name: portfolio
+    description: ポートフォリオ分析
+  - name: transactions
+    description: 取引履歴管理
+  - name: prices
+    description: 現在値取得・価格履歴
+  - name: summary
+    description: 合計情報・サマリー
+  - name: import
+    description: データインポート
+
+paths:
+  # 銘柄一覧管理
+  /stocks:
+    get:
+      tags: [stocks]
+      summary: 銘柄一覧取得
+      description: 保有している全銘柄の一覧を取得
+      parameters:
+        - name: includeZero
+          in: query
+          description: 保有株数0の銘柄も含める
+          schema:
+            type: boolean
+            default: false
+        - name: market
+          in: query
+          description: 市場フィルター
+          schema:
+            type: string
+            enum: [国内, 米国]
+        - name: holdingCompany
+          in: query
+          description: 証券会社フィルター
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          description: ソート項目
+          schema:
+            type: string
+            enum: [stock_name, profit_loss, profit_loss_rate, investment_amount]
+            default: stock_name
+        - name: sortOrder
+          in: query
+          description: ソート順
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: 銘柄一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stocks:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Stock'
+                      totalCount:
+                        type: integer
+                      filters:
+                        type: object
+                        properties:
+                          market:
+                            type: array
+                            items:
+                              type: string
+                          holdingCompany:
+                            type: array
+                            items:
+                              type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [stocks]
+      summary: 銘柄追加
+      description: 新しい銘柄を追加
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockInput'
+      responses:
+        '201':
+          description: 銘柄追加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Stock'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stocks/{id}:
+    get:
+      tags: [stocks]
+      summary: 銘柄詳細取得
+      description: 指定した銘柄の詳細情報を取得
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 銘柄詳細取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StockDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [stocks]
+      summary: 銘柄更新
+      description: 指定した銘柄の情報を更新
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockInput'
+      responses:
+        '200':
+          description: 銘柄更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Stock'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [stocks]
+      summary: 銘柄削除
+      description: 指定した銘柄を削除
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 銘柄削除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ポートフォリオ分析
+  /portfolio/composition:
+    get:
+      tags: [portfolio]
+      summary: ポートフォリオ構成比率
+      description: 銘柄別、証券会社別、市場別の構成比率を取得
+      responses:
+        '200':
+          description: 構成比率取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      byStock:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CompositionItem'
+                      byCompany:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CompositionItem'
+                      byMarket:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CompositionItem'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /portfolio/performance:
+    get:
+      tags: [portfolio]
+      summary: パフォーマンス比較
+      description: 銘柄別のパフォーマンス比較データを取得（損益率固定）
+      responses:
+        '200':
+          description: パフォーマンス比較取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stockName:
+                          type: string
+                        profitLossRate:
+                          type: number
+                          format: decimal
+                        profitLoss:
+                          type: number
+                          format: decimal
+                        investmentAmount:
+                          type: number
+                          format: decimal
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 取引履歴管理
+  /transactions:
+    get:
+      tags: [transactions]
+      summary: 取引履歴一覧取得
+      description: 取引履歴の一覧を取得
+      parameters:
+        - name: stockId
+          in: query
+          description: 銘柄IDフィルター
+          schema:
+            type: integer
+        - name: type
+          in: query
+          description: 取引種別フィルター
+          schema:
+            type: string
+            enum: [BUY, SELL, DIVIDEND]
+        - name: startDate
+          in: query
+          description: 開始日
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 終了日
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          description: ページ番号
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: 1ページあたりの件数
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 取引履歴取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      transactions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [transactions]
+      summary: 取引追加
+      description: 新しい取引を追加
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionInput'
+      responses:
+        '201':
+          description: 取引追加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /transactions/summary:
+    get:
+      tags: [transactions]
+      summary: 期間別取引サマリー
+      description: 指定期間の取引サマリーを取得
+      parameters:
+        - name: period
+          in: query
+          description: 集計期間
+          schema:
+            type: string
+            enum: [week, month, quarter, year, custom]
+            default: month
+        - name: startDate
+          in: query
+          description: 開始日（custom期間時）
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 終了日（custom期間時）
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 取引サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      totalBuy:
+                        type: number
+                        format: decimal
+                      totalSell:
+                        type: number
+                        format: decimal
+                      totalDividend:
+                        type: number
+                        format: decimal
+                      netProfit:
+                        type: number
+                        format: decimal
+                      transactionCount:
+                        type: integer
+                      periodStats:
+                        type: object
+                        properties:
+                          currentMonth:
+                            type: object
+                            properties:
+                              buy:
+                                type: number
+                              sell:
+                                type: number
+                              dividend:
+                                type: number
+                              count:
+                                type: integer
+                          currentYear:
+                            type: object
+                            properties:
+                              buy:
+                                type: number
+                              sell:
+                                type: number
+                              dividend:
+                                type: number
+                              count:
+                                type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 価格管理
+  /prices/update:
+    post:
+      tags: [prices]
+      summary: 現在値手動更新
+      description: 保有銘柄の現在値を手動で更新
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stockIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: 特定銘柄のみ更新する場合
+      responses:
+        '200':
+          description: 価格更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      updatedCount:
+                        type: integer
+                      failedCount:
+                        type: integer
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            stockId:
+                              type: integer
+                            stockName:
+                              type: string
+                            success:
+                              type: boolean
+                            oldPrice:
+                              type: number
+                            newPrice:
+                              type: number
+                            error:
+                              type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /prices/history/{stockId}:
+    get:
+      tags: [prices]
+      summary: 価格履歴取得
+      description: 指定銘柄の価格履歴を取得
+      parameters:
+        - name: stockId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: days
+          in: query
+          description: 取得日数
+          schema:
+            type: integer
+            default: 30
+        - name: interval
+          in: query
+          description: データ間隔
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+            default: daily
+      responses:
+        '200':
+          description: 価格履歴取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stockId:
+                        type: integer
+                      stockName:
+                        type: string
+                      history:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PriceHistory'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 合計情報・サマリー
+  /summary:
+    get:
+      tags: [summary]
+      summary: 全体サマリー取得
+      description: ポートフォリオ全体のサマリー情報を取得
+      responses:
+        '200':
+          description: サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PortfolioSummary'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /summary/by-company:
+    get:
+      tags: [summary]
+      summary: 証券会社別サマリー
+      description: 証券会社別のサマリー情報を取得
+      responses:
+        '200':
+          description: 証券会社別サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        companyName:
+                          type: string
+                        stockCount:
+                          type: integer
+                        totalInvestment:
+                          type: number
+                        totalProfitLoss:
+                          type: number
+                        totalDividend:
+                          type: number
+                        profitLossRate:
+                          type: number
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # データインポート
+  /import/tsv:
+    post:
+      tags: [import]
+      summary: TSVファイルインポート
+      description: TSVファイルから銘柄データをインポート
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: TSVファイル
+                options:
+                  type: object
+                  properties:
+                    replaceExisting:
+                      type: boolean
+                      default: false
+                      description: 既存データを置換するか
+                    skipHeader:
+                      type: boolean
+                      default: true
+                      description: ヘッダー行をスキップするか
+      responses:
+        '200':
+          description: インポート成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      imported:
+                        type: integer
+                      updated:
+                        type: integer
+                      skipped:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            line:
+                              type: integer
+                            error:
+                              type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # バッチ処理（現在値取得）
+  /batch/price-update:
+    post:
+      tags: [prices]
+      summary: 価格自動更新バッチ
+      description: 保有株式の現在値を自動更新（前場11:30、後場15:00実行）
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: バッチ処理成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      batchId:
+                        type: string
+                        description: バッチID
+                      executedAt:
+                        type: string
+                        format: date-time
+                        description: 実行日時
+                      session:
+                        type: string
+                        enum: [morning, afternoon, after_hours]
+                        description: 市場セッション
+                      updatedCount:
+                        type: integer
+                        description: 更新成功件数
+                      failedCount:
+                        type: integer
+                        description: 更新失敗件数
+                      totalProcessed:
+                        type: integer
+                        description: 処理対象件数
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            stockId:
+                              type: integer
+                            stockName:
+                              type: string
+                            success:
+                              type: boolean
+                            oldPrice:
+                              type: number
+                              format: decimal
+                            newPrice:
+                              type: number
+                              format: decimal
+                            error:
+                              type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          description: レスポンスデータ
+        timestamp:
+          type: string
+          format: date-time
+          description: レスポンス生成時刻
+
+    ApiErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    CompositionItem:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+          format: decimal
+        percentage:
+          type: number
+          format: decimal
+
+    Stock:
+      type: object
+      properties:
+        id:
+          type: integer
+        no:
+          type: integer
+          description: TSVのNo列
+        stockName:
+          type: string
+        holdingCompany:
+          type: string
+        market:
+          type: string
+          enum: [国内, 米国]
+        code:
+          type: string
+        sharesHeld:
+          type: number
+          format: decimal
+        avgAcquisitionPrice:
+          type: number
+          format: decimal
+        investmentAmount:
+          type: number
+          format: decimal
+        currentPrice:
+          type: number
+          format: decimal
+        profitLoss:
+          type: number
+          format: decimal
+        profitLossRate:
+          type: number
+          format: decimal
+        dividendPerShare:
+          type: number
+          format: decimal
+        dividendYield:
+          type: number
+          format: decimal
+        dividendAmount:
+          type: number
+          format: decimal
+        purchaseDate:
+          type: string
+          format: date
+          nullable: true
+        saleDate:
+          type: string
+          format: date
+          nullable: true
+        realizedProfitLoss:
+          type: number
+          format: decimal
+          nullable: true
+        targetPrice:
+          type: number
+          format: decimal
+          nullable: true
+        marketSector:
+          type: string
+          nullable: true
+        purpose:
+          type: string
+          nullable: true
+        lastPriceUpdate:
+          type: string
+          format: date-time
+          nullable: true
+        priceUpdateStatus:
+          type: string
+          enum: [success, error, pending]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StockInput:
+      type: object
+      required:
+        - stockName
+        - holdingCompany
+        - market
+        - code
+      properties:
+        no:
+          type: integer
+        stockName:
+          type: string
+        holdingCompany:
+          type: string
+        market:
+          type: string
+          enum: [国内, 米国]
+        code:
+          type: string
+        sharesHeld:
+          type: number
+          format: decimal
+          default: 0
+        avgAcquisitionPrice:
+          type: number
+          format: decimal
+          default: 0
+        investmentAmount:
+          type: number
+          format: decimal
+          default: 0
+        dividendPerShare:
+          type: number
+          format: decimal
+          default: 0
+        dividendYield:
+          type: number
+          format: decimal
+          default: 0
+        purchaseDate:
+          type: string
+          format: date
+          nullable: true
+        targetPrice:
+          type: number
+          format: decimal
+          nullable: true
+        marketSector:
+          type: string
+          nullable: true
+        purpose:
+          type: string
+          nullable: true
+
+    StockDetail:
+      allOf:
+        - $ref: '#/components/schemas/Stock'
+        - type: object
+          properties:
+            transactions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaction'
+            dividendHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/DividendHistory'
+            priceHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/PriceHistory'
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        stockId:
+          type: integer
+        stockName:
+          type: string
+        transactionType:
+          type: string
+          enum: [BUY, SELL, DIVIDEND]
+        shares:
+          type: number
+          format: decimal
+        pricePerShare:
+          type: number
+          format: decimal
+        totalAmount:
+          type: number
+          format: decimal
+        fee:
+          type: number
+          format: decimal
+          default: 0
+        transactionDate:
+          type: string
+          format: date
+        memo:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    TransactionInput:
+      type: object
+      required:
+        - stockId
+        - transactionType
+        - shares
+        - pricePerShare
+        - transactionDate
+      properties:
+        stockId:
+          type: integer
+        transactionType:
+          type: string
+          enum: [BUY, SELL, DIVIDEND]
+        shares:
+          type: number
+          format: decimal
+        pricePerShare:
+          type: number
+          format: decimal
+        totalAmount:
+          type: number
+          format: decimal
+        fee:
+          type: number
+          format: decimal
+          default: 0
+        transactionDate:
+          type: string
+          format: date
+        memo:
+          type: string
+          nullable: true
+
+    DividendHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+        stockId:
+          type: integer
+        dividendAmount:
+          type: number
+          format: decimal
+        paymentDate:
+          type: string
+          format: date
+        dividendType:
+          type: string
+          enum: [期末, 中間, 特別]
+        createdAt:
+          type: string
+          format: date-time
+
+    PriceHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+        stockId:
+          type: integer
+        price:
+          type: number
+          format: decimal
+        recordedAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [yahoo, rakuten, manual]
+        marketSession:
+          type: string
+          enum: [morning, afternoon, after_hours]
+        createdAt:
+          type: string
+          format: date-time
+
+    PortfolioSummary:
+      type: object
+      properties:
+        totalInvestment:
+          type: number
+          format: decimal
+          description: 全投資額
+        totalCurrentValue:
+          type: number
+          format: decimal
+          description: 現在の評価額
+        totalProfitLoss:
+          type: number
+          format: decimal
+          description: 全体損益
+        totalProfitLossRate:
+          type: number
+          format: decimal
+          description: 全体損益率
+        totalDividend:
+          type: number
+          format: decimal
+          description: 全体配当金額
+        stockCount:
+          type: integer
+          description: 保有銘柄数
+        companiesCount:
+          type: integer
+          description: 証券会社数
+        lastUpdated:
+          type: string
+          format: date-time
+          description: 最終更新日時
+        marketBreakdown:
+          type: object
+          properties:
+            domestic:
+              type: object
+              properties:
+                investment:
+                  type: number
+                profitLoss:
+                  type: number
+                stockCount:
+                  type: integer
+            us:
+              type: object
+              properties:
+                investment:
+                  type: number
+                profitLoss:
+                  type: number
+                stockCount:
+                  type: integer
+
+    Pagination:
+      type: object
+      properties:
+        currentPage:
+          type: integer
+        totalPages:
+          type: integer
+        totalCount:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+  responses:
+    BadRequest:
+      description: リクエストが不正です
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            error:
+              code: 'BAD_REQUEST'
+              message: 'リクエストパラメータが不正です'
+            timestamp: '2023-12-01T12:00:00Z'
+
+    Unauthorized:
+      description: 認証が必要です
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            error:
+              code: 'UNAUTHORIZED'
+              message: 'APIキーが無効です'
+            timestamp: '2023-12-01T12:00:00Z'
+
+    NotFound:
+      description: リソースが見つかりません
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            error:
+              code: 'NOT_FOUND'
+              message: '指定された銘柄が見つかりません'
+            timestamp: '2023-12-01T12:00:00Z'
+
+    InternalServerError:
+      description: サーバー内部エラー
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            error:
+              code: 'INTERNAL_SERVER_ERROR'
+              message: 'サーバー内部でエラーが発生しました'
+            timestamp: '2023-12-01T12:00:00Z'
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: バッチ処理用のAPIキー

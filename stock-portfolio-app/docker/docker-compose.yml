@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: stock-portfolio-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: stock_portfolio
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+      MYSQL_USER: ${DB_USER:-stock_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-stock_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - stock-network
+
+  # app:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   container_name: stock-portfolio-app
+  #   restart: unless-stopped
+  #   environment:
+  #     DATABASE_URL: mysql://${DB_USER:-stock_user}:${DB_PASSWORD:-stock_password}@mysql:3306/${DB_NAME:-stock_portfolio}
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-your-secret-key}
+  #     NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+  #   ports:
+  #     - "4000:3000"
+  #   depends_on:
+  #     - mysql
+  #   volumes:
+  #     - ..:/app
+  #     - /app/node_modules
+  #     - /app/.next
+  #   networks:
+  #     - stock-network
+  #   command: pnpm dev
+
+volumes:
+  mysql_data:
+
+networks:
+  stock-network:
+    driver: bridge

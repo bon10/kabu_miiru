@@ -1,0 +1,135 @@
+// 株式ポートフォリオ管理アプリ - Prisma Schema
+// TSVファイルベースのデータ構造に基づく設計
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 銘柄マスタ（TSVファイルの全20列に対応）
+model Stock {
+  id               Int       @id @default(autoincrement())
+  no               Int?      // TSVのNo列
+  stockName        String    // 銘柄名
+  holdingCompany   String    // 保有会社（証券会社）
+  market           String    // 市場（国内/米国）
+  code             String    @unique // コード
+  
+  // 保有・投資情報
+  sharesHeld            Decimal  @default(0) @db.Decimal(15,4)  // 保有株数
+  avgAcquisitionPrice   Decimal  @default(0) @db.Decimal(15,4)  // 平均取得単価
+  investmentAmount      Decimal  @default(0) @db.Decimal(15,2)  // 投資額
+  currentPrice          Decimal  @default(0) @db.Decimal(15,4)  // 現在価格
+  profitLoss            Decimal  @default(0) @db.Decimal(15,2)  // 損益
+  profitLossRate        Decimal  @default(0) @db.Decimal(8,4)   // 損益率
+  
+  // 配当情報
+  dividendPerShare      Decimal  @default(0) @db.Decimal(10,4)  // 1株配当金
+  dividendYield         Decimal  @default(0) @db.Decimal(8,4)   // 配当利回り
+  dividendAmount        Decimal  @default(0) @db.Decimal(15,2)  // 配当金額
+  
+  // 取引情報
+  purchaseDate          DateTime? // 購入日
+  saleDate              DateTime? // 売却日
+  realizedProfitLoss    Decimal? @db.Decimal(15,2) // 実現損益
+  targetPrice           Decimal? @db.Decimal(15,4) // 目標価格
+  marketSector          String?   // 市場・セクター
+  purpose               String?   // 目的
+  
+  // 価格更新情報
+  lastPriceUpdate       DateTime? // 最終価格更新日時
+  priceUpdateStatus     PriceUpdateStatus @default(PENDING) // 更新ステータス
+  priceUpdateError      String?   // 更新エラー内容
+  priceSource           String?   // 価格取得元
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // リレーション
+  transactions          Transaction[]
+  dividendHistory       DividendHistory[]
+  priceHistory          PriceHistory[]
+}
+
+// 価格履歴（新機能：価格取得機能のため）
+model PriceHistory {
+  id            Int       @id @default(autoincrement())
+  stockId       Int
+  price         Decimal   @db.Decimal(15,4)
+  recordedAt    DateTime
+  source        String    // yahoo, rakuten, manual
+  marketSession MarketSession? // morning, afternoon, after_hours
+  createdAt     DateTime  @default(now())
+  
+  stock         Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  
+  @@index([stockId, recordedAt])
+}
+
+// 取引履歴
+model Transaction {
+  id              Int             @id @default(autoincrement())
+  stockId         Int
+  transactionType TransactionType // BUY, SELL, DIVIDEND
+  shares          Decimal         @db.Decimal(15,4)
+  pricePerShare   Decimal         @db.Decimal(15,4)
+  totalAmount     Decimal         @db.Decimal(15,2)
+  fee             Decimal         @default(0) @db.Decimal(15,2)
+  transactionDate DateTime
+  memo            String?
+  createdAt       DateTime        @default(now())
+  
+  stock           Stock           @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  
+  @@index([stockId, transactionDate])
+}
+
+// 配当履歴
+model DividendHistory {
+  id              Int       @id @default(autoincrement())
+  stockId         Int
+  dividendAmount  Decimal   @db.Decimal(15,2)
+  paymentDate     DateTime
+  dividendType    String    // 期末, 中間, 特別
+  createdAt       DateTime  @default(now())
+  
+  stock           Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  
+  @@index([stockId, paymentDate])
+}
+
+// ポートフォリオサマリー（キャッシュ用）
+model PortfolioSummary {
+  id                    Int      @id @default(autoincrement())
+  totalInvestment       Decimal  @db.Decimal(15,2)
+  totalProfitLoss       Decimal  @db.Decimal(15,2)
+  totalDividend         Decimal  @db.Decimal(15,2)
+  totalProfitRate       Decimal  @db.Decimal(8,4)
+  summaryDate           DateTime
+  createdAt             DateTime @default(now())
+  
+  @@unique([summaryDate])
+}
+
+// ENUM定義
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+}
+
+enum PriceUpdateStatus {
+  SUCCESS
+  ERROR
+  PENDING
+}
+
+enum MarketSession {
+  MORNING     // 前場
+  AFTERNOON   // 後場
+  AFTER_HOURS // 時間外
+}
