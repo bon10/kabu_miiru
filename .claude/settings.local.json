@@ -16,7 +16,10 @@
       "Bash(pnpm lint:*)",
       "Bash(mkdir:*)",
       "Bash(touch:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   },
