@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
+import {
+  createSuccessResponse,
+  createErrorResponse,
+  handleApiError,
+} from '@/lib/api-response'
 import { getMarketFromCode } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
@@ -8,7 +12,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File
     const optionsStr = formData.get('options') as string
-    
+
     if (!file) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', 'TSVファイルが指定されていません'),
@@ -22,8 +26,8 @@ export async function POST(request: NextRequest) {
 
     // ファイル内容を読み取り
     const text = await file.text()
-    const lines = text.split('\n').filter(line => line.trim())
-    
+    const lines = text.split('\n').filter((line) => line.trim())
+
     if (lines.length === 0) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', 'ファイルが空です'),
@@ -53,24 +57,43 @@ export async function POST(request: NextRequest) {
         }
 
         const [
-          no, stockName, holdingCompany, market, code,
-          sharesHeld, avgAcquisitionPrice, investmentAmount, currentPrice, profitLoss, profitLossRate,
-          dividendPerShare, dividendYield, dividendAmount, purchaseDate, saleDate,
-          realizedProfitLoss, targetPrice, marketSector, purpose
+          no,
+          stockName,
+          holdingCompany,
+          market,
+          code,
+          sharesHeld,
+          avgAcquisitionPrice,
+          investmentAmount,
+          currentPrice,
+          profitLoss,
+          profitLossRate,
+          dividendPerShare,
+          dividendYield,
+          dividendAmount,
+          purchaseDate,
+          saleDate,
+          realizedProfitLoss,
+          targetPrice,
+          marketSector,
+          purpose,
         ] = columns
 
         if (!stockName || !holdingCompany || !code) {
-          errors.push({ line: lineNumber, error: '銘柄名、保有会社、コードは必須です' })
+          errors.push({
+            line: lineNumber,
+            error: '銘柄名、保有会社、コードは必須です',
+          })
           continue
         }
 
         // 日付のパース
-        const parsePurchaseDate = purchaseDate && purchaseDate.trim() 
-          ? new Date(purchaseDate.trim()) 
-          : null
-        const parseSaleDate = saleDate && saleDate.trim() 
-          ? new Date(saleDate.trim()) 
-          : null
+        const parsePurchaseDate =
+          purchaseDate && purchaseDate.trim()
+            ? new Date(purchaseDate.trim())
+            : null
+        const parseSaleDate =
+          saleDate && saleDate.trim() ? new Date(saleDate.trim()) : null
 
         // 数値のパース（エラーハンドリング付き）
         const parseDecimal = (value: string, defaultValue = 0) => {
@@ -83,7 +106,10 @@ export async function POST(request: NextRequest) {
           no: no && no.trim() ? parseInt(no.trim()) : null,
           stockName: stockName.trim(),
           holdingCompany: holdingCompany.trim(),
-          market: market && market.trim() ? market.trim() : getMarketFromCode(code.trim()),
+          market:
+            market && market.trim()
+              ? market.trim()
+              : getMarketFromCode(code.trim()),
           code: code.trim(),
           sharesHeld: parseDecimal(sharesHeld),
           avgAcquisitionPrice: parseDecimal(avgAcquisitionPrice),
@@ -96,26 +122,29 @@ export async function POST(request: NextRequest) {
           dividendAmount: parseDecimal(dividendAmount),
           purchaseDate: parsePurchaseDate,
           saleDate: parseSaleDate,
-          realizedProfitLoss: realizedProfitLoss && realizedProfitLoss.trim() 
-            ? parseDecimal(realizedProfitLoss) 
-            : null,
-          targetPrice: targetPrice && targetPrice.trim() 
-            ? parseDecimal(targetPrice) 
-            : null,
-          marketSector: marketSector && marketSector.trim() ? marketSector.trim() : null,
-          purpose: purpose && purpose.trim() ? purpose.trim() : null
+          realizedProfitLoss:
+            realizedProfitLoss && realizedProfitLoss.trim()
+              ? parseDecimal(realizedProfitLoss)
+              : null,
+          targetPrice:
+            targetPrice && targetPrice.trim()
+              ? parseDecimal(targetPrice)
+              : null,
+          marketSector:
+            marketSector && marketSector.trim() ? marketSector.trim() : null,
+          purpose: purpose && purpose.trim() ? purpose.trim() : null,
         }
 
         // 既存レコードの確認
         const existingStock = await prisma.stock.findUnique({
-          where: { code: stockData.code }
+          where: { code: stockData.code },
         })
 
         if (existingStock) {
           if (replaceExisting) {
             await prisma.stock.update({
               where: { code: stockData.code },
-              data: stockData
+              data: stockData,
             })
             updated++
           } else {
@@ -123,22 +152,25 @@ export async function POST(request: NextRequest) {
           }
         } else {
           await prisma.stock.create({
-            data: stockData
+            data: stockData,
           })
           imported++
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '不明なエラー'
+        const errorMessage =
+          error instanceof Error ? error.message : '不明なエラー'
         errors.push({ line: lineNumber, error: errorMessage })
       }
     }
 
-    return Response.json(createSuccessResponse({
-      imported,
-      updated,
-      skipped,
-      errors
-    }))
+    return Response.json(
+      createSuccessResponse({
+        imported,
+        updated,
+        skipped,
+        errors,
+      })
+    )
   } catch (error) {
     return handleApiError(error)
   }

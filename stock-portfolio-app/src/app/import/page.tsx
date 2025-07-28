@@ -3,7 +3,13 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Upload, FileText, AlertCircle, CheckCircle, Download } from 'lucide-react'
+import {
+  Upload,
+  FileText,
+  AlertCircle,
+  CheckCircle,
+  Download,
+} from 'lucide-react'
 
 interface ImportResult {
   success: boolean
@@ -21,16 +27,19 @@ export default function ImportPage() {
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
-    if (selectedFile && selectedFile.type === 'text/tab-separated-values' || selectedFile.name.endsWith('.tsv')) {
+    if (
+      (selectedFile && selectedFile.type === 'text/tab-separated-values') ||
+      selectedFile?.name.endsWith('.tsv')
+    ) {
       setFile(selectedFile)
       setResult(null)
-      
+
       // ファイルプレビュー
       const reader = new FileReader()
       reader.onload = (e) => {
         const text = e.target?.result as string
         const rows = text.split('\n').slice(0, 6) // 最初の6行のみプレビュー
-        const parsedRows = rows.map(row => row.split('\t'))
+        const parsedRows = rows.map((row) => row.split('\t'))
         setPreview(parsedRows)
       }
       reader.readAsText(selectedFile)
@@ -49,15 +58,16 @@ export default function ImportPage() {
 
       const response = await fetch('/api/import/tsv', {
         method: 'POST',
-        body: formData
+        body: formData,
       })
 
       const result = await response.json()
       setResult(result)
     } catch (error) {
+      console.error(error)
       setResult({
         success: false,
-        message: 'インポート中にエラーが発生しました'
+        message: 'インポート中にエラーが発生しました',
       })
     } finally {
       setLoading(false)
@@ -66,14 +76,33 @@ export default function ImportPage() {
 
   const downloadTemplate = () => {
     const headers = [
-      'No', '銘柄名', '保有会社', '市場', 'コード', '保有株数', '平均取得単価',
-      '投資額', '現在価格', '損益', '損益率', '1株配当金', '配当利回り', '配当金額',
-      '購入日', '売却日', '実現損益', '目標価格', '市場・セクター', '目的'
+      'No',
+      '銘柄名',
+      '保有会社',
+      '市場',
+      'コード',
+      '保有株数',
+      '平均取得単価',
+      '投資額',
+      '現在価格',
+      '損益',
+      '損益率',
+      '1株配当金',
+      '配当利回り',
+      '配当金額',
+      '購入日',
+      '売却日',
+      '実現損益',
+      '目標価格',
+      '市場・セクター',
+      '目的',
     ]
-    
-    const csvContent = headers.join('\t') + '\n' + 
+
+    const csvContent =
+      headers.join('\t') +
+      '\n' +
       '1\tサンプル銘柄\tSBI証券\t国内\t1234\t100\t1000\t100000\t1100\t10000\t0.1\t50\t0.045\t5000\t2023-01-01\t\t\t1200\tテクノロジー\t成長投資'
-    
+
     const blob = new Blob([csvContent], { type: 'text/tab-separated-values' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -134,11 +163,13 @@ export default function ImportPage() {
                 className="hidden"
                 id="file-input"
               />
-              <label htmlFor="file-input">
-                <Button variant="outline" className="cursor-pointer">
-                  ファイルを選択
-                </Button>
-              </label>
+              <Button 
+                variant="outline" 
+                onClick={() => document.getElementById('file-input')?.click()}
+                className="cursor-pointer"
+              >
+                ファイルを選択
+              </Button>
             </div>
 
             {file && (
@@ -168,9 +199,15 @@ export default function ImportPage() {
               <table className="w-full text-sm">
                 <tbody>
                   {preview.map((row, index) => (
-                    <tr key={index} className={index === 0 ? 'font-medium bg-gray-50' : ''}>
+                    <tr
+                      key={index}
+                      className={index === 0 ? 'font-medium bg-gray-50' : ''}
+                    >
                       {row.map((cell, cellIndex) => (
-                        <td key={cellIndex} className="border p-2 truncate max-w-32">
+                        <td
+                          key={cellIndex}
+                          className="border p-2 truncate max-w-32"
+                        >
                           {cell}
                         </td>
                       ))}
@@ -198,15 +235,18 @@ export default function ImportPage() {
                     <p className="font-medium text-yellow-800">注意事項</p>
                     <ul className="text-sm text-yellow-700 mt-2 space-y-1">
                       <li>• 既存の銘柄データは更新されます</li>
-                      <li>• 必須項目（銘柄名、保有会社、市場、コード）が不足している行はスキップされます</li>
+                      <li>
+                        •
+                        必須項目（銘柄名、保有会社、市場、コード）が不足している行はスキップされます
+                      </li>
                       <li>• インポート前にデータのバックアップを推奨します</li>
                     </ul>
                   </div>
                 </div>
               </div>
 
-              <Button 
-                onClick={handleImport} 
+              <Button
+                onClick={handleImport}
                 disabled={loading}
                 className="w-full"
               >
@@ -241,29 +281,33 @@ export default function ImportPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`p-4 rounded-lg ${
-              result.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-            }`}>
-              <p className={`font-medium ${
-                result.success ? 'text-green-800' : 'text-red-800'
-              }`}>
+            <div
+              className={`p-4 rounded-lg ${
+                result.success
+                  ? 'bg-green-50 border border-green-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}
+            >
+              <p
+                className={`font-medium ${
+                  result.success ? 'text-green-800' : 'text-red-800'
+                }`}
+              >
                 {result.message}
               </p>
-              
+
               {result.success && (
                 <div className="mt-3 space-y-1 text-sm text-green-700">
-                  {result.imported && (
-                    <p>• 新規追加: {result.imported}件</p>
-                  )}
-                  {result.updated && (
-                    <p>• 更新: {result.updated}件</p>
-                  )}
+                  {result.imported && <p>• 新規追加: {result.imported}件</p>}
+                  {result.updated && <p>• 更新: {result.updated}件</p>}
                 </div>
               )}
 
-              {result.errors && result.errors.length > 0 && (
+              {!result.success && result.errors && result.errors.length > 0 && (
                 <div className="mt-3">
-                  <p className="text-sm font-medium text-red-800">エラー詳細:</p>
+                  <p className="text-sm font-medium text-red-800">
+                    エラー詳細:
+                  </p>
                   <ul className="text-sm text-red-700 mt-1 space-y-1">
                     {result.errors.map((error, index) => (
                       <li key={index}>• {error}</li>
@@ -296,7 +340,7 @@ export default function ImportPage() {
                 <span>• 投資額</span>
               </div>
             </div>
-            
+
             <div>
               <p className="font-medium mb-2">オプション列:</p>
               <div className="grid grid-cols-2 gap-2">
