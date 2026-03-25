@@ -14,9 +14,10 @@ interface Broker {
 
 export default function EditStockPage() {
   const params = useParams()
-  const [initialData, setInitialData] = useState<Record<string, any> | null>(
-    null
-  )
+  const [initialData, setInitialData] = useState<Record<
+    string,
+    string | number | null
+  > | null>(null)
   const [brokers, setBrokers] = useState<Broker[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
