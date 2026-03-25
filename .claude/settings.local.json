@@ -27,7 +27,13 @@
       "Bash(source:*)",
       "Bash(gh auth:*)",
       "Bash(git remote add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(mysql -u stock_user -pstock_password stock_portfolio -e \"SELECT DISTINCT holdingCompany FROM Stock;\")",
+      "Bash(mysql:*)"
     ],
     "deny": []
   },

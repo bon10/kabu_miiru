@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 
@@ -13,14 +14,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
 
     // フィルター条件を構築
-    const where: any = {}
+    const where: Prisma.TransactionWhereInput = {}
     
     if (stockId) {
       where.stockId = parseInt(stockId)
     }
     
     if (type) {
-      where.transactionType = type
+      where.transactionType = type as 'BUY' | 'SELL' | 'DIVIDEND'
     }
     
     if (startDate || endDate) {

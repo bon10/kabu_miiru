@@ -50,7 +50,14 @@ export async function fetchStockPrice(symbol: string): Promise<StockPrice | null
 /**
  * Yahoo Finance APIから株価データを取得
  */
-async function fetchFromYahooFinance(symbol: string): Promise<any | null> {
+interface YahooFinanceResult {
+  regularMarketPrice: number
+  regularMarketPreviousClose: number
+  regularMarketChange: number
+  regularMarketChangePercent: number
+}
+
+async function fetchFromYahooFinance(symbol: string): Promise<YahooFinanceResult | null> {
   try {
     // Yahoo Finance v8 API（非公式）を使用
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
@@ -145,7 +152,7 @@ function generateMockPriceData(symbol: string): StockPrice {
 /**
  * 前場・後場の判定
  */
-export function getCurrentMarketSession(): 'morning' | 'afternoon' | 'after_hours' {
+export function getCurrentMarketSession(): 'MORNING' | 'AFTERNOON' | 'AFTER_HOURS' {
   const now = new Date()
   const hour = now.getHours()
   const minute = now.getMinutes()
@@ -153,15 +160,15 @@ export function getCurrentMarketSession(): 'morning' | 'afternoon' | 'after_hour
   
   // 前場: 9:00-11:30
   if (timeInMinutes >= 540 && timeInMinutes <= 690) {
-    return 'morning'
+    return 'MORNING'
   }
-  
+
   // 後場: 12:30-15:00
   if (timeInMinutes >= 750 && timeInMinutes <= 900) {
-    return 'afternoon'
+    return 'AFTERNOON'
   }
-  
-  return 'after_hours'
+
+  return 'AFTER_HOURS'
 }
 
 /**

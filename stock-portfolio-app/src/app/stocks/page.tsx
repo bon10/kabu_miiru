@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Search, Filter } from 'lucide-react'
+import { Plus, Filter } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatCurrency, formatPercentage, formatDate } from '@/lib/utils'
+import { formatCurrency, formatPercentage } from '@/lib/utils'
 
 interface Stock {
   id: number
@@ -75,9 +75,10 @@ export default function StocksPage() {
 
   useEffect(() => {
     fetchStocks()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters])
 
-  const handleFilterChange = (key: string, value: any) => {
+  const handleFilterChange = (key: string, value: string | boolean) => {
     setFilters(prev => ({ ...prev, [key]: value }))
   }
 

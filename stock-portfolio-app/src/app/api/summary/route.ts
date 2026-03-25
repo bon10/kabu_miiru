@@ -1,8 +1,7 @@
-import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const stocks = await prisma.stock.findMany()
     const holdingStocks = stocks.filter(stock => Number(stock.sharesHeld) > 0)

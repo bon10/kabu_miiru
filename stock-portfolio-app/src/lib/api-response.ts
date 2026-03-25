@@ -1,9 +1,9 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data?: T
   error?: {
     code: string
     message: string
-    details?: any
+    details?: unknown
   }
   timestamp: string
 }
@@ -18,7 +18,7 @@ export function createSuccessResponse<T>(data: T): ApiResponse<T> {
 export function createErrorResponse(
   code: string,
   message: string,
-  details?: any
+  details?: unknown
 ): ApiResponse {
   return {
     error: {
@@ -30,17 +30,18 @@ export function createErrorResponse(
   }
 }
 
-export function handleApiError(error: any): Response {
+export function handleApiError(error: unknown): Response {
   console.error('API Error:', error)
-  
-  if (error.code === 'P2002') {
+
+  const prismaError = error as { code?: string }
+  if (prismaError.code === 'P2002') {
     return Response.json(
       createErrorResponse('DUPLICATE_ENTRY', '重複したデータが存在します'),
       { status: 400 }
     )
   }
   
-  if (error.code === 'P2025') {
+  if (prismaError.code === 'P2025') {
     return Response.json(
       createErrorResponse('NOT_FOUND', 'データが見つかりません'),
       { status: 404 }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
+import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    let dateFilter: any = {}
+    let dateFilter: Record<string, Date> = {}
 
     // 期間の設定
     const now = new Date()
@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
     let totalBuy = 0
     let totalSell = 0
     let totalDividend = 0
-    let totalProfit = 0
     const transactionCount = transactions.length
 
     transactions.forEach(transaction => {
@@ -71,9 +70,6 @@ export async function GET(request: NextRequest) {
           break
       }
     })
-
-    // 利益は売却額 + 配当 - 購入額（手数料考慮なし）
-    totalProfit = totalSell + totalDividend - totalBuy
 
     // 今月の統計
     const thisMonth = new Date()
@@ -97,7 +93,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const calculateStats = (transactions: any[]) => {
+    const calculateStats = (transactions: { totalAmount: unknown; transactionType: string }[]) => {
       let buyCount = 0, sellCount = 0, dividendCount = 0, totalAmount = 0
       
       transactions.forEach(t => {

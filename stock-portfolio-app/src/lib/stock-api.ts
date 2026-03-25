@@ -45,14 +45,15 @@ async function fetchYahooFinanceData(symbol: string): Promise<StockPrice | null>
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${formattedSymbol}`
     
     const response = await fetch(url)
-    const data = await response.json() as any
+    const data = await response.json() as Record<string, unknown>
 
-    if (!data.chart?.result?.[0]) {
+    const chart = data.chart as { result?: Array<{ meta?: Record<string, unknown>; indicators?: { quote?: unknown[] } }> } | undefined
+    if (!chart?.result?.[0]) {
       console.error(`No data found for symbol: ${symbol}`)
       return null
     }
 
-    const result = data.chart.result[0]
+    const result = chart.result[0]
     const meta = result.meta
     const quote = result.indicators?.quote?.[0]
 
@@ -61,14 +62,14 @@ async function fetchYahooFinanceData(symbol: string): Promise<StockPrice | null>
       return null
     }
 
-    const currentPrice = meta.regularMarketPrice || 0
-    const previousClose = meta.previousClose || 0
+    const currentPrice = (meta.regularMarketPrice as number) || 0
+    const previousClose = (meta.previousClose as number) || 0
     const change = currentPrice - previousClose
     const changePercent = previousClose !== 0 ? (change / previousClose) * 100 : 0
 
     return {
       symbol,
-      name: meta.shortName || symbol,
+      name: (meta.shortName as string) || symbol,
       currentPrice,
       previousClose,
       change,

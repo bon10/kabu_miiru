@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, BarChart3, History, Upload, RefreshCw } from 'lucide-react'
+import { TrendingUp, BarChart3, History, Upload, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +31,11 @@ const navigation = [
     name: 'インポート',
     href: '/import',
     icon: Upload
+  },
+  {
+    name: '設定',
+    href: '/settings',
+    icon: Settings
   }
 ]
 

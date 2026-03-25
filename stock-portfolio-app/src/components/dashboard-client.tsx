@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, DollarSign, PieChart, History, ArrowRight } from 'lucide-react'
-import { formatCurrency, formatPercentage, formatDate } from '@/lib/utils'
+import { TrendingUp, TrendingDown, DollarSign, PieChart, History } from 'lucide-react'
+import { formatCurrency, formatPercentage } from '@/lib/utils'
 import Link from 'next/link'
 
 interface DashboardClientProps {

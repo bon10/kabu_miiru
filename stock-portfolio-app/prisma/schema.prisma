@@ -8,6 +8,7 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 // 銘柄マスタ（TSVファイルの全20列に対応）
@@ -18,7 +19,7 @@ model Stock {
   holdingCompany   String    // 保有会社（証券会社）
   market           String    // 市場（国内/米国）
   code             String    @unique // コード
-  
+
   // 保有・投資情報
   sharesHeld            Decimal  @default(0) @db.Decimal(15,4)  // 保有株数
   avgAcquisitionPrice   Decimal  @default(0) @db.Decimal(15,4)  // 平均取得単価
@@ -26,12 +27,12 @@ model Stock {
   currentPrice          Decimal  @default(0) @db.Decimal(15,4)  // 現在価格
   profitLoss            Decimal  @default(0) @db.Decimal(15,2)  // 損益
   profitLossRate        Decimal  @default(0) @db.Decimal(8,4)   // 損益率
-  
+
   // 配当情報
   dividendPerShare      Decimal  @default(0) @db.Decimal(10,4)  // 1株配当金
   dividendYield         Decimal  @default(0) @db.Decimal(8,4)   // 配当利回り
   dividendAmount        Decimal  @default(0) @db.Decimal(15,2)  // 配当金額
-  
+
   // 取引情報
   purchaseDate          DateTime? // 購入日
   saleDate              DateTime? // 売却日
@@ -39,16 +40,16 @@ model Stock {
   targetPrice           Decimal? @db.Decimal(15,4) // 目標価格
   marketSector          String?   // 市場・セクター
   purpose               String?   // 目的
-  
+
   // 価格更新情報
   lastPriceUpdate       DateTime? // 最終価格更新日時
   priceUpdateStatus     PriceUpdateStatus @default(PENDING) // 更新ステータス
   priceUpdateError      String?   // 更新エラー内容
   priceSource           String?   // 価格取得元
-  
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
-  
+
   // リレーション
   transactions          Transaction[]
   dividendHistory       DividendHistory[]
@@ -64,9 +65,9 @@ model PriceHistory {
   source        String    // yahoo, rakuten, manual
   marketSession MarketSession? // morning, afternoon, after_hours
   createdAt     DateTime  @default(now())
-  
+
   stock         Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  
+
   @@index([stockId, recordedAt])
 }
 
@@ -82,9 +83,9 @@ model Transaction {
   transactionDate DateTime
   memo            String?
   createdAt       DateTime        @default(now())
-  
+
   stock           Stock           @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  
+
   @@index([stockId, transactionDate])
 }
 
@@ -96,9 +97,9 @@ model DividendHistory {
   paymentDate     DateTime
   dividendType    String    // 期末, 中間, 特別
   createdAt       DateTime  @default(now())
-  
+
   stock           Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  
+
   @@index([stockId, paymentDate])
 }
 
@@ -111,8 +112,16 @@ model PortfolioSummary {
   totalProfitRate       Decimal  @db.Decimal(8,4)
   summaryDate           DateTime
   createdAt             DateTime @default(now())
-  
+
   @@unique([summaryDate])
+}
+
+// 証券会社マスタ
+model Broker {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique // 証券会社名
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ENUM定義

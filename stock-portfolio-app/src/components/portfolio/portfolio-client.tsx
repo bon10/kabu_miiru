@@ -46,8 +46,8 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'
 export default function PortfolioClient({ portfolioData }: PortfolioClientProps) {
   const [activeTab, setActiveTab] = useState('by-stock')
 
-  const renderCustomizedLabel = (entry: any) => {
-    return `${entry.percentage.toFixed(1)}%`
+  const renderCustomizedLabel = (entry: Record<string, unknown>) => {
+    return `${(entry.percentage as number).toFixed(1)}%`
   }
 
   return (

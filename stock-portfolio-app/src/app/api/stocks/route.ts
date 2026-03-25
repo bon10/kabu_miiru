@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
-import { calculateProfitLoss, getMarketFromCode } from '@/lib/utils'
+import { getMarketFromCode } from '@/lib/utils'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,8 +14,8 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'asc'
 
     // フィルター条件を構築
-    const where: any = {}
-    
+    const where: Prisma.StockWhereInput = {}
+
     if (!includeZero) {
       where.sharesHeld = { gt: 0 }
     }
@@ -28,8 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ソート条件を構築
-    const orderBy: any = {}
-    orderBy[sortBy] = sortOrder
+    const orderBy: Prisma.StockOrderByWithRelationInput = { [sortBy]: sortOrder }
 
     const stocks = await prisma.stock.findMany({
       where,
@@ -42,15 +42,15 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // フィルターオプションを取得
-    const [markets, companies] = await Promise.all([
+    // フィルターオプションを取得（証券会社はマスタから）
+    const [markets, brokers] = await Promise.all([
       prisma.stock.findMany({
         select: { market: true },
         distinct: ['market']
       }),
-      prisma.stock.findMany({
-        select: { holdingCompany: true },
-        distinct: ['holdingCompany']
+      prisma.broker.findMany({
+        select: { name: true },
+        orderBy: { name: 'asc' }
       })
     ])
 
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
       totalCount: stocks.length,
       filters: {
         market: markets.map(m => m.market),
-        holdingCompany: companies.map(c => c.holdingCompany)
+        holdingCompany: brokers.map(b => b.name)
       }
     }))
   } catch (error) {

@@ -30,7 +30,7 @@ export async function seedDatabase() {
         marketSector: '自動車',
         purpose: '長期保有',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 2,
@@ -52,7 +52,7 @@ export async function seedDatabase() {
         marketSector: 'テクノロジー',
         purpose: '成長株投資',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 3,
@@ -74,7 +74,7 @@ export async function seedDatabase() {
         marketSector: 'エンターテインメント',
         purpose: 'ポートフォリオ分散',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 4,
@@ -96,7 +96,7 @@ export async function seedDatabase() {
         marketSector: 'ソフトウェア',
         purpose: 'テクノロジー投資',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 5,
@@ -118,7 +118,7 @@ export async function seedDatabase() {
         marketSector: 'ゲーム',
         purpose: 'エンターテインメント株',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       }
     ]
 

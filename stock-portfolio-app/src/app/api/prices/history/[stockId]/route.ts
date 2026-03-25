@@ -4,10 +4,11 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { stockId: string } }
+  { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    const stockId = parseInt(params.stockId)
+    const { stockId: stockIdStr } = await params
+    const stockId = parseInt(stockIdStr)
     const searchParams = request.nextUrl.searchParams
     const days = parseInt(searchParams.get('days') || '30')
     const interval = searchParams.get('interval') || 'daily'

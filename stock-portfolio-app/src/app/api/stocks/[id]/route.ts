@@ -5,10 +5,11 @@ import { getMarketFromCode } from '@/lib/utils'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idStr } = await params
+    const id = parseInt(idStr)
     
     if (isNaN(id)) {
       return Response.json(
@@ -17,21 +18,27 @@ export async function GET(
       )
     }
 
-    const stock = await prisma.stock.findUnique({
-      where: { id },
-      include: {
-        transactions: {
-          orderBy: { transactionDate: 'desc' }
-        },
-        dividendHistory: {
-          orderBy: { paymentDate: 'desc' }
-        },
-        priceHistory: {
-          orderBy: { recordedAt: 'desc' },
-          take: 30
+    const [stock, brokers] = await Promise.all([
+      prisma.stock.findUnique({
+        where: { id },
+        include: {
+          transactions: {
+            orderBy: { transactionDate: 'desc' }
+          },
+          dividendHistory: {
+            orderBy: { paymentDate: 'desc' }
+          },
+          priceHistory: {
+            orderBy: { recordedAt: 'desc' },
+            take: 30
+          }
         }
-      }
-    })
+      }),
+      prisma.broker.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' }
+      })
+    ])
 
     if (!stock) {
       return Response.json(
@@ -67,7 +74,8 @@ export async function GET(
       priceHistory: stock.priceHistory.map(p => ({
         ...p,
         price: Number(p.price)
-      }))
+      })),
+      brokers
     }))
   } catch (error) {
     return handleApiError(error)
@@ -76,10 +84,11 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idStr } = await params
+    const id = parseInt(idStr)
     const body = await request.json()
     
     if (isNaN(id)) {
@@ -147,10 +156,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idStr } = await params
+    const id = parseInt(idStr)
     
     if (isNaN(id)) {
       return Response.json(

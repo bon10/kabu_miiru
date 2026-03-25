@@ -1,6 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { TrendingUp, TrendingDown, DollarSign, PieChart } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
 import DashboardClient from '@/components/dashboard-client'
 
 // サーバーコンポーネントでサマリーデータを取得
