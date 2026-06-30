@@ -57,19 +57,26 @@ export async function GET() {
       stockCount: data.count
     }))
 
-    // パーセンテージを計算（保有株数ベース）
-    const totalShares = stocks.reduce((sum, stock) => sum + Number(stock.sharesHeld), 0)
-    
+    // パーセンテージは投資額（取得原価）ベース。
+    // 円グラフが investmentAmount をスライス値にしているのと整合させる。
+    const totalInvestment = stocks.reduce(
+      (sum, stock) => sum + Number(stock.investmentAmount),
+      0,
+    )
+
     byStock.forEach(item => {
-      item.percentage = totalShares > 0 ? (item.sharesHeld / totalShares) * 100 : 0
+      item.percentage =
+        totalInvestment > 0 ? (item.investmentAmount / totalInvestment) * 100 : 0
     })
-    
+
     byCompany.forEach(item => {
-      item.percentage = totalShares > 0 ? (item.sharesHeld / totalShares) * 100 : 0
+      item.percentage =
+        totalInvestment > 0 ? (item.investmentAmount / totalInvestment) * 100 : 0
     })
-    
+
     byMarket.forEach(item => {
-      item.percentage = totalShares > 0 ? (item.sharesHeld / totalShares) * 100 : 0
+      item.percentage =
+        totalInvestment > 0 ? (item.investmentAmount / totalInvestment) * 100 : 0
     })
 
     // 値でソート（降順）
