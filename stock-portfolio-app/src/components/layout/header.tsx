@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, BarChart3, History, Upload, RefreshCw, Settings } from 'lucide-react'
+import { TrendingUp, BarChart3, History, Coins, Upload, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -26,6 +26,11 @@ const navigation = [
     name: '取引履歴',
     href: '/transactions',
     icon: History
+  },
+  {
+    name: '配当',
+    href: '/dividends',
+    icon: Coins
   },
   {
     name: 'インポート',

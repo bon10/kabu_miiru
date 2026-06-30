@@ -8,12 +8,14 @@ import {
   Edit,
   Plus,
   Minus,
+  Coins,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
+import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
 import {
   Table,
   TableBody,
@@ -88,6 +90,7 @@ export default function StockDetailPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
+  const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
 
   const fetchStock = useCallback(async () => {
     try {
@@ -206,6 +209,10 @@ export default function StockDetailPage() {
             <Minus className="h-4 w-4 mr-2" />
             売却
           </Button>
+          <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
+            <Coins className="h-4 w-4 mr-2" />
+            配当を追加
+          </Button>
           <Button asChild>
             <Link href={`/stocks/${stock.id}/edit`}>
               <Edit className="h-4 w-4 mr-2" />
@@ -228,6 +235,20 @@ export default function StockDetailPage() {
         ]}
         defaultStockId={stock.id}
         defaultType={dialogType}
+        onSubmitted={() => fetchStock()}
+      />
+
+      <DividendFormDialog
+        open={dividendDialogOpen}
+        onOpenChange={setDividendDialogOpen}
+        stocks={[
+          {
+            id: stock.id,
+            stockName: stock.stockName,
+            code: stock.code,
+          },
+        ]}
+        defaultStockId={stock.id}
         onSubmitted={() => fetchStock()}
       />
 
