@@ -33,7 +33,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx prisma:*)",
       "Bash(mysql -u stock_user -pstock_password stock_portfolio -e \"SELECT DISTINCT holdingCompany FROM Stock;\")",
-      "Bash(mysql:*)"
+      "Bash(mysql:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": []
   },

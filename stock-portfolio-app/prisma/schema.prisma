@@ -71,11 +71,11 @@ model PriceHistory {
   @@index([stockId, recordedAt])
 }
 
-// 取引履歴
+// 取引履歴（売買のみ。配当は DividendHistory で管理 / ADR 0002）
 model Transaction {
   id              Int             @id @default(autoincrement())
   stockId         Int
-  transactionType TransactionType // BUY, SELL, DIVIDEND
+  transactionType TransactionType // BUY, SELL
   shares          Decimal         @db.Decimal(15,4)
   pricePerShare   Decimal         @db.Decimal(15,4)
   totalAmount     Decimal         @db.Decimal(15,2)
@@ -128,7 +128,6 @@ model Broker {
 enum TransactionType {
   BUY
   SELL
-  DIVIDEND
 }
 
 enum PriceUpdateStatus {

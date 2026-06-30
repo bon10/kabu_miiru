@@ -1,64 +1,119 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { CalendarDays, Plus, Filter } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import {
+  TransactionFormDialog,
+  type StockOption,
+} from '@/components/transactions/transaction-form-dialog'
 
-interface TransactionsClientProps {
-  transactionsData: {
-    transactions: Array<{
-      id: number
-      stockName: string
-      transactionType: string
-      shares: number
-      pricePerShare: number
-      totalAmount: number
-      fee: number
-      transactionDate: string
-      memo?: string
-    }>
-    summary: {
-      totalTransactions: number
-      totalBuyAmount: number
-      totalSellAmount: number
-      totalDividend: number
-      totalFees: number
-      periodStats: {
-        thisMonth: {
-          buyCount: number
-          sellCount: number
-          dividendCount: number
-          totalAmount: number
-        }
-        thisYear: {
-          buyCount: number
-          sellCount: number
-          dividendCount: number
-          totalAmount: number
-        }
-      }
+interface TransactionRow {
+  id: number
+  stockId: number
+  stockName: string
+  stockCode: string
+  transactionType: 'BUY' | 'SELL'
+  shares: number
+  pricePerShare: number
+  totalAmount: number
+  fee: number
+  transactionDate: string
+  memo?: string | null
+}
+
+interface TransactionsResponse {
+  data: {
+    transactions: TransactionRow[]
+    pagination: {
+      currentPage: number
+      totalPages: number
+      totalCount: number
     }
   }
 }
 
-export default function TransactionsClient({ transactionsData }: TransactionsClientProps) {
+interface SummaryResponse {
+  data: {
+    totalTransactions: number
+    totalBuyAmount: number
+    totalSellAmount: number
+    totalDividend: number
+    totalFees: number
+    periodStats: {
+      thisMonth: { buyCount: number; sellCount: number; totalAmount: number }
+      thisYear: { buyCount: number; sellCount: number; totalAmount: number }
+    }
+  }
+}
+
+interface StocksResponse {
+  data: {
+    stocks: Array<{
+      id: number
+      stockName: string
+      code: string
+      sharesHeld: number
+    }>
+  }
+}
+
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json()
+}
+
+export default function TransactionsClient() {
   const [selectedPeriod, setSelectedPeriod] = useState('all')
-  const [selectedType, setSelectedType] = useState('all')
+  const [selectedType, setSelectedType] = useState<'all' | 'BUY' | 'SELL'>(
+    'all'
+  )
   const [sortBy, setSortBy] = useState('date-desc')
+  const [dialogOpen, setDialogOpen] = useState(false)
 
-  // フィルタリングとソート
+  const { data: txData, mutate: mutateTx } = useSWR<TransactionsResponse>(
+    '/api/transactions?limit=200',
+    fetcher
+  )
+  const { data: sumData, mutate: mutateSum } = useSWR<SummaryResponse>(
+    '/api/transactions/summary?period=year',
+    fetcher
+  )
+  const { data: stocksData } = useSWR<StocksResponse>(
+    '/api/stocks?includeZero=true',
+    fetcher
+  )
+
+  const summary = sumData?.data
+  const stocks: StockOption[] = useMemo(
+    () =>
+      (stocksData?.data.stocks ?? []).map((s) => ({
+        id: s.id,
+        stockName: s.stockName,
+        code: s.code,
+        sharesHeld: Number(s.sharesHeld ?? 0),
+      })),
+    [stocksData]
+  )
+
   const filteredAndSortedTransactions = useMemo(() => {
-    let filtered = transactionsData.transactions
+    let filtered = [...(txData?.data.transactions ?? [])]
 
-    // 期間フィルター
     if (selectedPeriod !== 'all') {
       const now = new Date()
       const cutoffDate = new Date()
-
       switch (selectedPeriod) {
         case 'this-month':
           cutoffDate.setMonth(now.getMonth())
@@ -73,26 +128,27 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
           cutoffDate.setMonth(now.getMonth() - 3)
           break
       }
-
-      filtered = filtered.filter(transaction => 
-        new Date(transaction.transactionDate) >= cutoffDate
+      filtered = filtered.filter(
+        (t) => new Date(t.transactionDate) >= cutoffDate
       )
     }
 
-    // 取引種別フィルター
     if (selectedType !== 'all') {
-      filtered = filtered.filter(transaction => 
-        transaction.transactionType === selectedType
-      )
+      filtered = filtered.filter((t) => t.transactionType === selectedType)
     }
 
-    // ソート
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'date-desc':
-          return new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+          return (
+            new Date(b.transactionDate).getTime() -
+            new Date(a.transactionDate).getTime()
+          )
         case 'date-asc':
-          return new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()
+          return (
+            new Date(a.transactionDate).getTime() -
+            new Date(b.transactionDate).getTime()
+          )
         case 'amount-desc':
           return b.totalAmount - a.totalAmount
         case 'amount-asc':
@@ -105,50 +161,24 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
     })
 
     return filtered
-  }, [transactionsData.transactions, selectedPeriod, selectedType, sortBy])
-
-  const getTransactionTypeColor = (type: string) => {
-    switch (type) {
-      case 'BUY':
-        return 'bg-blue-100 text-blue-800'
-      case 'SELL':
-        return 'bg-green-100 text-green-800'
-      case 'DIVIDEND':
-        return 'bg-yellow-100 text-yellow-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getTransactionTypeLabel = (type: string) => {
-    switch (type) {
-      case 'BUY':
-        return '購入'
-      case 'SELL':
-        return '売却'
-      case 'DIVIDEND':
-        return '配当'
-      default:
-        return type
-    }
-  }
+  }, [txData, selectedPeriod, selectedType, sortBy])
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">取引履歴</h1>
-          <p className="text-muted-foreground">
-            全取引の管理と分析
-          </p>
+          <p className="text-muted-foreground">購入・売却取引の管理と分析</p>
         </div>
-        <Button className="flex items-center space-x-2">
+        <Button
+          onClick={() => setDialogOpen(true)}
+          className="flex items-center space-x-2"
+        >
           <Plus className="h-4 w-4" />
           <span>新規取引追加</span>
         </Button>
       </div>
 
-      {/* サマリーカード */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -157,7 +187,7 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {transactionsData.summary.totalTransactions}
+              {summary?.totalTransactions ?? '-'}
             </div>
           </CardContent>
         </Card>
@@ -169,7 +199,7 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(transactionsData.summary.totalBuyAmount)}
+              {summary ? formatCurrency(summary.totalBuyAmount) : '-'}
             </div>
           </CardContent>
         </Card>
@@ -181,25 +211,24 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(transactionsData.summary.totalSellAmount)}
+              {summary ? formatCurrency(summary.totalSellAmount) : '-'}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">配当総額</CardTitle>
-            <div className="text-yellow-600">配</div>
+            <CardTitle className="text-sm font-medium">手数料合計</CardTitle>
+            <div className="text-muted-foreground">¥</div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(transactionsData.summary.totalDividend)}
+              {summary ? formatCurrency(summary.totalFees) : '-'}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* フィルターとソート */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -226,7 +255,12 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
 
             <div className="space-y-2">
               <label className="text-sm font-medium">取引種別</label>
-              <Select value={selectedType} onValueChange={setSelectedType}>
+              <Select
+                value={selectedType}
+                onValueChange={(v) =>
+                  setSelectedType(v as 'all' | 'BUY' | 'SELL')
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="取引種別を選択" />
                 </SelectTrigger>
@@ -234,7 +268,6 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
                   <SelectItem value="all">全て</SelectItem>
                   <SelectItem value="BUY">購入</SelectItem>
                   <SelectItem value="SELL">売却</SelectItem>
-                  <SelectItem value="DIVIDEND">配当</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -258,7 +291,6 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
         </CardContent>
       </Card>
 
-      {/* 取引履歴テーブル */}
       <Card>
         <CardHeader>
           <CardTitle>取引履歴一覧</CardTitle>
@@ -268,35 +300,39 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {filteredAndSortedTransactions.map((transaction) => (
+            {filteredAndSortedTransactions.map((t) => (
               <div
-                key={transaction.id}
+                key={t.id}
                 className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
               >
                 <div className="flex items-center space-x-4">
-                  <Badge className={getTransactionTypeColor(transaction.transactionType)}>
-                    {getTransactionTypeLabel(transaction.transactionType)}
+                  <Badge
+                    className={
+                      t.transactionType === 'BUY'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-green-100 text-green-800'
+                    }
+                  >
+                    {t.transactionType === 'BUY' ? '購入' : '売却'}
                   </Badge>
                   <div>
-                    <div className="font-medium">{transaction.stockName}</div>
+                    <div className="font-medium">{t.stockName}</div>
                     <div className="text-sm text-muted-foreground">
-                      {formatDate(transaction.transactionDate)}
+                      {formatDate(t.transactionDate)}
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="text-right">
                   <div className="font-medium">
-                    {formatCurrency(transaction.totalAmount)}
+                    {formatCurrency(t.totalAmount)}
                   </div>
-                  {transaction.shares > 0 && (
-                    <div className="text-sm text-muted-foreground">
-                      {transaction.shares}株 × {formatCurrency(transaction.pricePerShare)}
-                    </div>
-                  )}
-                  {transaction.fee > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    {t.shares}株 × {formatCurrency(t.pricePerShare)}
+                  </div>
+                  {t.fee > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      手数料: {formatCurrency(transaction.fee)}
+                      手数料: {formatCurrency(t.fee)}
                     </div>
                   )}
                 </div>
@@ -312,7 +348,6 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
         </CardContent>
       </Card>
 
-      {/* 期間別サマリー */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -322,25 +357,21 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
             <div className="flex justify-between">
               <span>購入取引</span>
               <span className="font-medium">
-                {transactionsData.summary.periodStats.thisMonth.buyCount}件
+                {summary?.periodStats.thisMonth.buyCount ?? 0}件
               </span>
             </div>
             <div className="flex justify-between">
               <span>売却取引</span>
               <span className="font-medium">
-                {transactionsData.summary.periodStats.thisMonth.sellCount}件
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>配当受取</span>
-              <span className="font-medium">
-                {transactionsData.summary.periodStats.thisMonth.dividendCount}件
+                {summary?.periodStats.thisMonth.sellCount ?? 0}件
               </span>
             </div>
             <div className="flex justify-between">
               <span>合計金額</span>
               <span className="font-medium">
-                {formatCurrency(transactionsData.summary.periodStats.thisMonth.totalAmount)}
+                {summary
+                  ? formatCurrency(summary.periodStats.thisMonth.totalAmount)
+                  : '-'}
               </span>
             </div>
           </CardContent>
@@ -354,30 +385,34 @@ export default function TransactionsClient({ transactionsData }: TransactionsCli
             <div className="flex justify-between">
               <span>購入取引</span>
               <span className="font-medium">
-                {transactionsData.summary.periodStats.thisYear.buyCount}件
+                {summary?.periodStats.thisYear.buyCount ?? 0}件
               </span>
             </div>
             <div className="flex justify-between">
               <span>売却取引</span>
               <span className="font-medium">
-                {transactionsData.summary.periodStats.thisYear.sellCount}件
+                {summary?.periodStats.thisYear.sellCount ?? 0}件
               </span>
             </div>
             <div className="flex justify-between">
-              <span>配当受取</span>
+              <span>配当合計</span>
               <span className="font-medium">
-                {transactionsData.summary.periodStats.thisYear.dividendCount}件
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>合計金額</span>
-              <span className="font-medium">
-                {formatCurrency(transactionsData.summary.periodStats.thisYear.totalAmount)}
+                {summary ? formatCurrency(summary.totalDividend) : '-'}
               </span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <TransactionFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        stocks={stocks}
+        onSubmitted={() => {
+          mutateTx()
+          mutateSum()
+        }}
+      />
     </div>
   )
 }

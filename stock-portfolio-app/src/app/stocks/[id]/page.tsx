@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Edit, TrendingUp, TrendingDown } from 'lucide-react'
+import {
+  ArrowLeft,
+  Edit,
+  Plus,
+  Minus,
+  TrendingUp,
+  TrendingDown,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
 import {
   Table,
   TableBody,
@@ -23,7 +31,7 @@ import {
 
 interface Transaction {
   id: number
-  transactionType: string
+  transactionType: 'BUY' | 'SELL'
   shares: number
   pricePerShare: number
   totalAmount: number
@@ -78,37 +86,30 @@ export default function StockDetailPage() {
   const params = useParams()
   const [stock, setStock] = useState<StockDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
 
-  useEffect(() => {
-    const fetchStock = async () => {
-      try {
-        setLoading(true)
-
-        // "new"の場合は新規作成ページなので、データ取得をスキップ
-        if (params.id === 'new') {
-          setLoading(false)
-          return
-        }
-
-        const response = await fetch(`/api/stocks/${params.id}`)
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch stock')
-        }
-
-        const result = await response.json()
-        setStock(result.data)
-      } catch (error) {
-        console.error('Error fetching stock:', error)
-      } finally {
+  const fetchStock = useCallback(async () => {
+    try {
+      setLoading(true)
+      if (params.id === 'new') {
         setLoading(false)
+        return
       }
-    }
-
-    if (params.id) {
-      fetchStock()
+      const response = await fetch(`/api/stocks/${params.id}`)
+      if (!response.ok) throw new Error('Failed to fetch stock')
+      const result = await response.json()
+      setStock(result.data)
+    } catch (error) {
+      console.error('Error fetching stock:', error)
+    } finally {
+      setLoading(false)
     }
   }, [params.id])
+
+  useEffect(() => {
+    if (params.id) fetchStock()
+  }, [params.id, fetchStock])
 
   if (loading) {
     return (
@@ -183,13 +184,52 @@ export default function StockDetailPage() {
             </p>
           </div>
         </div>
-        <Button asChild>
-          <Link href={`/stocks/${stock.id}/edit`}>
-            <Edit className="h-4 w-4 mr-2" />
-            編集
-          </Link>
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDialogType('BUY')
+              setDialogOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            購入を追加
+          </Button>
+          <Button
+            variant="outline"
+            disabled={stock.sharesHeld <= 0}
+            onClick={() => {
+              setDialogType('SELL')
+              setDialogOpen(true)
+            }}
+          >
+            <Minus className="h-4 w-4 mr-2" />
+            売却
+          </Button>
+          <Button asChild>
+            <Link href={`/stocks/${stock.id}/edit`}>
+              <Edit className="h-4 w-4 mr-2" />
+              編集
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      <TransactionFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        stocks={[
+          {
+            id: stock.id,
+            stockName: stock.stockName,
+            code: stock.code,
+            sharesHeld: stock.sharesHeld,
+          },
+        ]}
+        defaultStockId={stock.id}
+        defaultType={dialogType}
+        onSubmitted={() => fetchStock()}
+      />
 
       {/* 基本情報カード */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -347,16 +387,12 @@ export default function StockDetailPage() {
                         className={`px-2 py-1 rounded text-xs font-medium ${
                           transaction.transactionType === 'BUY'
                             ? 'bg-blue-100 text-blue-800'
-                            : transaction.transactionType === 'SELL'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
                         }`}
                       >
                         {transaction.transactionType === 'BUY'
                           ? '購入'
-                          : transaction.transactionType === 'SELL'
-                          ? '売却'
-                          : '配当'}
+                          : '売却'}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
