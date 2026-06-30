@@ -39,7 +39,7 @@ cp .env.example .env
 DATABASE_URL="mysql://root:password@localhost:3306/stock_portfolio"
 
 # Next.js設定
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:3300"
 NEXTAUTH_SECRET="your-secret-key"
 
 # 外部API設定（将来使用）
@@ -55,7 +55,7 @@ YAHOO_FINANCE_API_KEY=""
 docker-compose up -d mysql
 
 # データベーススキーマを適用
-pnpm dlx prisma db push
+pnpm db:push
 ```
 
 #### ローカルMySQLを使用する場合
@@ -68,7 +68,7 @@ mysql -u root -p
 CREATE DATABASE stock_portfolio;
 
 # Prismaスキーマを適用
-pnpm dlx prisma db push
+pnpm db:push
 ```
 
 ### 5. 開発サーバーの起動
@@ -77,7 +77,7 @@ pnpm dlx prisma db push
 pnpm dev
 ```
 
-アプリケーションは `http://localhost:3000` でアクセスできます。
+アプリケーションは `http://localhost:3300` でアクセスできます。
 
 ## データベース管理
 
@@ -86,7 +86,7 @@ pnpm dev
 データベースの内容を視覚的に確認・編集：
 
 ```bash
-pnpm dlx prisma studio
+pnpm db:studio
 ```
 
 ### マイグレーション
@@ -95,17 +95,17 @@ pnpm dlx prisma studio
 
 ```bash
 # 開発環境での迅速な反映
-pnpm dlx prisma db push
+pnpm db:push
 
 # 本番環境用のマイグレーションファイル生成
-pnpm dlx prisma migrate dev --name "migration_name"
+pnpm db:migrate --name "migration_name"
 ```
 
 ### データベースリセット
 
 ```bash
 # データベースをリセット
-pnpm dlx prisma migrate reset
+pnpm db:reset
 ```
 
 ## TSVデータのインポート
@@ -118,12 +118,12 @@ pnpm dlx prisma migrate reset
 
 1. **Web UI経由**:
 
-   - `http://localhost:3000/import` にアクセス
+   - `http://localhost:3300/import` にアクセス
    - TSVファイルをアップロード
 
 2. **API経由**:
    ```bash
-   curl -X POST http://localhost:3000/api/import/tsv \
+   curl -X POST http://localhost:3300/api/import/tsv \
      -F "file=@stock_template.tsv" \
      -F "options={\"replaceExisting\":false}"
    ```
@@ -172,20 +172,20 @@ Error: P1001: Can't reach database server
 #### 2. ポート競合エラー
 
 ```
-Error: listen EADDRINUSE: address already in use :::3000
+Error: listen EADDRINUSE: address already in use :::3300
 ```
 
 **解決方法**:
 
 ```bash
 # 使用中のプロセスを確認
-lsof -i :3000
+lsof -i :3300
 
 # プロセスを終了
 kill -9 <PID>
 
 # または別のポートを使用
-pnpm dev -- -p 3001
+pnpm dev -- -p 3301
 ```
 
 #### 3. Prismaスキーマエラー
@@ -198,10 +198,10 @@ Error: Schema validation error
 
 ```bash
 # Prismaクライアントを再生成
-pnpm dlx prisma generate
+pnpm db:generate
 
 # データベースをリセット
-pnpm dlx prisma migrate reset
+pnpm db:reset
 ```
 
 ### ログの確認
@@ -239,10 +239,10 @@ git commit -m "feat: add new feature"
 # ...
 
 # 変更を適用
-pnpm dlx prisma db push
+pnpm db:push
 
 # 本番用マイグレーション生成
-pnpm dlx prisma migrate dev --name "add_new_table"
+pnpm db:migrate --name "add_new_table"
 ```
 
 ### 3. API開発

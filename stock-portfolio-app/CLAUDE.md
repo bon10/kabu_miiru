@@ -25,9 +25,9 @@ pnpm install
 
 **データベース操作:**
 ```bash
-pnpm dlx prisma generate    # Prismaクライアントの生成
-pnpm dlx prisma db push     # データベースへのスキーマ変更の反映
-pnpm dlx prisma studio      # データベースGUIの起動
+pnpm db:generate            # Prismaクライアントの生成
+pnpm db:push                # データベースへのスキーマ変更の反映
+pnpm db:studio              # データベースGUIの起動
 pnpm db:reset               # データベースのリセット
 ```
 

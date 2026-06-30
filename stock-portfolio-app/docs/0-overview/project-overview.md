@@ -70,7 +70,7 @@ cd stock-portfolio-app
 pnpm install
 
 # データベースのセットアップ
-pnpm dlx prisma db push
+pnpm db:push
 
 # 開発サーバーの起動
 pnpm dev
@@ -80,10 +80,10 @@ pnpm dev
 
 ```bash
 # スキーマの適用
-pnpm dlx prisma db push
+pnpm db:push
 
 # データベースの確認（Prisma Studio）
-pnpm dlx prisma studio
+pnpm db:studio
 ```
 
 ## 📊 TSVデータ仕様

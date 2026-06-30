@@ -160,13 +160,13 @@ TEXT           -- メモ、エラー内容
 
 ```bash
 # スキーマ変更の適用
-pnpm dlx prisma db push
+pnpm db:push
 
 # マイグレーションファイル生成
-pnpm dlx prisma migrate dev --name add_new_feature
+pnpm db:migrate --name add_new_feature
 
 # 本番環境適用
-pnpm dlx prisma migrate deploy
+./node_modules/.bin/prisma migrate deploy
 ```
 
 ### バージョン管理

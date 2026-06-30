@@ -113,7 +113,7 @@ cd stock-portfolio-app
 pnpm install
 
 # データベースのセットアップ
-pnpm dlx prisma db push
+pnpm db:push
 
 # 開発サーバーの起動
 pnpm dev
