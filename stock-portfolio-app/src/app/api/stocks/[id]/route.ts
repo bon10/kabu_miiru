@@ -115,6 +115,8 @@ export async function PUT(
       ? getMarketFromCode(body.code) 
       : body.market || existingStock.market
 
+    // 保有株数・平均取得単価・投資額・購入日は Transaction を Source of Truth
+    // とするため (ADR 0003)、PUT 経由での書き換えを無視する。
     const stock = await prisma.stock.update({
       where: { id },
       data: {
@@ -123,12 +125,8 @@ export async function PUT(
         holdingCompany: body.holdingCompany || existingStock.holdingCompany,
         market,
         code: body.code || existingStock.code,
-        sharesHeld: body.sharesHeld !== undefined ? body.sharesHeld : existingStock.sharesHeld,
-        avgAcquisitionPrice: body.avgAcquisitionPrice !== undefined ? body.avgAcquisitionPrice : existingStock.avgAcquisitionPrice,
-        investmentAmount: body.investmentAmount !== undefined ? body.investmentAmount : existingStock.investmentAmount,
         dividendPerShare: body.dividendPerShare !== undefined ? body.dividendPerShare : existingStock.dividendPerShare,
         dividendYield: body.dividendYield !== undefined ? body.dividendYield : existingStock.dividendYield,
-        purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : existingStock.purchaseDate,
         targetPrice: body.targetPrice !== undefined ? body.targetPrice : existingStock.targetPrice,
         marketSector: body.marketSector !== undefined ? body.marketSector : existingStock.marketSector,
         purpose: body.purpose !== undefined ? body.purpose : existingStock.purpose

@@ -35,14 +35,8 @@ export default function EditStockPage() {
           code: stock.code,
           holdingCompany: stock.holdingCompany,
           market: stock.market,
-          sharesHeld: stock.sharesHeld,
-          avgAcquisitionPrice: stock.avgAcquisitionPrice,
-          investmentAmount: stock.investmentAmount,
           dividendPerShare: stock.dividendPerShare,
           dividendYield: stock.dividendYield,
-          purchaseDate: stock.purchaseDate
-            ? new Date(stock.purchaseDate).toISOString().split('T')[0]
-            : '',
           targetPrice: stock.targetPrice ?? '',
           marketSector: stock.marketSector ?? '',
           purpose: stock.purpose ?? '',

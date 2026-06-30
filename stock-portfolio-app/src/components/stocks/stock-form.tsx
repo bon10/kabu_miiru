@@ -8,17 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { getMarketFromCode } from '@/lib/utils'
 
+// 保有株数・平均取得単価・投資額・購入日は Transaction が source of truth (ADR 0003)。
+// このフォームでは扱わない。
 interface StockFormData {
   stockName: string
   code: string
   holdingCompany: string
   market: string
-  sharesHeld: number
-  avgAcquisitionPrice: number
-  investmentAmount: number
   dividendPerShare: number
   dividendYield: number
-  purchaseDate: string
   targetPrice: string
   marketSector: string
   purpose: string
@@ -41,12 +39,8 @@ const defaultFormData: StockFormData = {
   code: '',
   holdingCompany: '',
   market: '',
-  sharesHeld: 0,
-  avgAcquisitionPrice: 0,
-  investmentAmount: 0,
   dividendPerShare: 0,
   dividendYield: 0,
-  purchaseDate: '',
   targetPrice: '',
   marketSector: '',
   purpose: '',
@@ -70,7 +64,6 @@ export default function StockForm({
   const handleChange = (field: keyof StockFormData, value: string | number) => {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value }
-      // コード変更時に市場を自動判定
       if (field === 'code' && typeof value === 'string' && value) {
         updated.market = getMarketFromCode(value)
       }
@@ -90,14 +83,13 @@ export default function StockForm({
     setSaving(true)
     try {
       const payload = {
-        ...formData,
-        sharesHeld: Number(formData.sharesHeld),
-        avgAcquisitionPrice: Number(formData.avgAcquisitionPrice),
-        investmentAmount: Number(formData.investmentAmount),
+        stockName: formData.stockName,
+        code: formData.code,
+        holdingCompany: formData.holdingCompany,
+        market: formData.market,
         dividendPerShare: Number(formData.dividendPerShare),
         dividendYield: Number(formData.dividendYield),
         targetPrice: formData.targetPrice ? Number(formData.targetPrice) : null,
-        purchaseDate: formData.purchaseDate || null,
         marketSector: formData.marketSector || null,
         purpose: formData.purpose || null,
       }
@@ -154,9 +146,7 @@ export default function StockForm({
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
             <Link
-              href={
-                mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'
-              }
+              href={mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
@@ -167,11 +157,7 @@ export default function StockForm({
           </h1>
         </div>
         {mode === 'edit' && (
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
+          <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
             {deleting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -182,6 +168,16 @@ export default function StockForm({
         )}
       </div>
 
+      {mode === 'edit' && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded text-sm">
+          保有株数・平均取得単価・投資額・購入日は売買履歴から自動計算されます。修正したい場合は
+          <a href={`/stocks/${stockId}`} className="underline mx-1">
+            銘柄詳細
+          </a>
+          から購入・売却を追加・削除してください。
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           {error}
@@ -189,7 +185,6 @@ export default function StockForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* 基本情報 */}
         <Card>
           <CardHeader>
             <CardTitle>基本情報</CardTitle>
@@ -226,9 +221,7 @@ export default function StockForm({
                 </label>
                 <select
                   value={formData.holdingCompany}
-                  onChange={(e) =>
-                    handleChange('holdingCompany', e.target.value)
-                  }
+                  onChange={(e) => handleChange('holdingCompany', e.target.value)}
                   className="w-full p-2 border rounded-md"
                 >
                   <option value="">選択してください</option>
@@ -240,10 +233,7 @@ export default function StockForm({
                 </select>
                 {brokers.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    <a
-                      href="/settings"
-                      className="text-primary hover:underline"
-                    >
+                    <a href="/settings" className="text-primary hover:underline">
                       設定
                     </a>
                     から証券会社を登録してください
@@ -262,9 +252,7 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  セクター
-                </label>
+                <label className="block text-sm font-medium mb-1">セクター</label>
                 <input
                   type="text"
                   value={formData.marketSector}
@@ -274,9 +262,7 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  投資目的
-                </label>
+                <label className="block text-sm font-medium mb-1">投資目的</label>
                 <input
                   type="text"
                   value={formData.purpose}
@@ -285,68 +271,8 @@ export default function StockForm({
                   placeholder="例: 長期保有"
                 />
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 保有・投資情報 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>保有・投資情報</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  保有株数
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={formData.sharesHeld}
-                  onChange={(e) => handleChange('sharesHeld', e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  平均取得単価
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={formData.avgAcquisitionPrice}
-                  onChange={(e) =>
-                    handleChange('avgAcquisitionPrice', e.target.value)
-                  }
-                  className="w-full p-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">投資額</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.investmentAmount}
-                  onChange={(e) =>
-                    handleChange('investmentAmount', e.target.value)
-                  }
-                  className="w-full p-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">購入日</label>
-                <input
-                  type="date"
-                  value={formData.purchaseDate}
-                  onChange={(e) => handleChange('purchaseDate', e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  目標価格
-                </label>
+                <label className="block text-sm font-medium mb-1">目標価格</label>
                 <input
                   type="number"
                   step="0.0001"
@@ -359,17 +285,17 @@ export default function StockForm({
           </CardContent>
         </Card>
 
-        {/* 配当情報 */}
         <Card>
           <CardHeader>
             <CardTitle>配当情報</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              想定年間配当の参考値。実際の受取は配当ページで記録します。
+            </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  1株配当金
-                </label>
+                <label className="block text-sm font-medium mb-1">1株配当金</label>
                 <input
                   type="number"
                   step="0.0001"
@@ -381,9 +307,7 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  配当利回り
-                </label>
+                <label className="block text-sm font-medium mb-1">配当利回り</label>
                 <input
                   type="number"
                   step="0.0001"
@@ -399,13 +323,10 @@ export default function StockForm({
           </CardContent>
         </Card>
 
-        {/* 送信ボタン */}
         <div className="flex justify-end space-x-4">
           <Button asChild variant="outline">
             <Link
-              href={
-                mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'
-              }
+              href={mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'}
             >
               キャンセル
             </Link>

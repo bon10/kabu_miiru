@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import PortfolioTimelineChart from '@/components/portfolio/portfolio-timeline-chart'
 
 interface PortfolioClientProps {
   portfolioData: {
@@ -60,11 +61,12 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="by-stock">銘柄別構成</TabsTrigger>
           <TabsTrigger value="by-company">証券会社別</TabsTrigger>
           <TabsTrigger value="by-market">市場別</TabsTrigger>
           <TabsTrigger value="performance">パフォーマンス</TabsTrigger>
+          <TabsTrigger value="timeline">推移</TabsTrigger>
         </TabsList>
 
         <TabsContent value="by-stock" className="space-y-4">
@@ -282,6 +284,10 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="space-y-4">
+          <PortfolioTimelineChart />
         </TabsContent>
       </Tabs>
     </div>
