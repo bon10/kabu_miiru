@@ -57,7 +57,7 @@ export default function EditStockPage() {
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -73,7 +73,7 @@ export default function EditStockPage() {
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>

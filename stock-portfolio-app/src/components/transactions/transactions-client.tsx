@@ -395,7 +395,7 @@ export default function TransactionsClient() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span>配当合計</span>
+              <span>今年の配当（受取）</span>
               <span className="font-medium">
                 {summary ? formatCurrency(summary.totalDividend) : '-'}
               </span>

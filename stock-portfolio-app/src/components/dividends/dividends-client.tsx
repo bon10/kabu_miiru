@@ -85,13 +85,16 @@ export default function DividendsClient() {
 
   const { data: divData, mutate: mutateDiv } = useSWR<DividendsResponse>(
     `/api/dividends?year=${selectedYear}&limit=500`,
-    fetcher,
+    fetcher
   )
   const { data: sumData, mutate: mutateSum } = useSWR<SummaryResponse>(
     `/api/dividends/summary?year=${selectedYear}`,
-    fetcher,
+    fetcher
   )
-  const { data: stocksData } = useSWR<StocksResponse>('/api/stocks?includeZero=true', fetcher)
+  const { data: stocksData } = useSWR<StocksResponse>(
+    '/api/stocks?includeZero=true',
+    fetcher
+  )
 
   const dividends = divData?.data.dividends ?? []
   const summary = sumData?.data
@@ -102,7 +105,7 @@ export default function DividendsClient() {
         stockName: s.stockName,
         code: s.code,
       })),
-    [stocksData],
+    [stocksData]
   )
 
   const yearOptions = useMemo(() => {
@@ -124,8 +127,11 @@ export default function DividendsClient() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">配当管理</h1>
-          <p className="text-muted-foreground">年・半期別の配当受取記録（カレンダー年基準）</p>
+          <h1 className="text-3xl font-bold">配当（受取）管理</h1>
+          <p className="text-muted-foreground">
+            実際に受け取った配当金の記録。年・半期はカレンダー年基準（ADR
+            0004）。
+          </p>
         </div>
         <div className="flex items-center space-x-2">
           <Select
@@ -143,9 +149,12 @@ export default function DividendsClient() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => setDialogOpen(true)} className="flex items-center space-x-2">
+          <Button
+            onClick={() => setDialogOpen(true)}
+            className="flex items-center space-x-2"
+          >
             <Plus className="h-4 w-4" />
-            <span>配当を追加</span>
+            <span>受取配当を追加</span>
           </Button>
         </div>
       </div>
@@ -153,7 +162,9 @@ export default function DividendsClient() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{selectedYear}年 合計</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {selectedYear}年 合計
+            </CardTitle>
             <Coins className="h-4 w-4 text-yellow-600" />
           </CardHeader>
           <CardContent>
@@ -171,7 +182,9 @@ export default function DividendsClient() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">上半期 (1-6月)</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              上半期 (1-6月)
+            </CardTitle>
             <span className="text-xs text-muted-foreground">H1</span>
           </CardHeader>
           <CardContent>
@@ -183,7 +196,9 @@ export default function DividendsClient() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">下半期 (7-12月)</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              下半期 (7-12月)
+            </CardTitle>
             <span className="text-xs text-muted-foreground">H2</span>
           </CardHeader>
           <CardContent>
@@ -226,11 +241,17 @@ export default function DividendsClient() {
                   <TableRow key={s.stockId}>
                     <TableCell>
                       <div className="font-medium">{s.stockName}</div>
-                      <div className="text-xs text-muted-foreground">{s.stockCode}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {s.stockCode}
+                      </div>
                     </TableCell>
                     <TableCell>{s.holdingCompany}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(s.firstHalf)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(s.secondHalf)}</TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(s.firstHalf)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(s.secondHalf)}
+                    </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(s.total)}
                     </TableCell>
@@ -240,7 +261,9 @@ export default function DividendsClient() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-muted-foreground">この年の配当受取記録はありません。</p>
+            <p className="text-muted-foreground">
+              この年の配当受取記録はありません。
+            </p>
           )}
         </CardContent>
       </Card>
@@ -268,7 +291,9 @@ export default function DividendsClient() {
                     <TableCell>{formatDate(d.paymentDate)}</TableCell>
                     <TableCell>
                       <div className="font-medium">{d.stockName}</div>
-                      <div className="text-xs text-muted-foreground">{d.stockCode}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {d.stockCode}
+                      </div>
                     </TableCell>
                     <TableCell>{d.holdingCompany}</TableCell>
                     <TableCell>
@@ -292,7 +317,9 @@ export default function DividendsClient() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-muted-foreground">この年の受取履歴はありません。</p>
+            <p className="text-muted-foreground">
+              この年の受取履歴はありません。
+            </p>
           )}
         </CardContent>
       </Card>

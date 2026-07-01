@@ -132,7 +132,7 @@ export default function StockForm({
       if (!response.ok && response.status !== 204) {
         throw new Error('削除に失敗しました')
       }
-      router.push('/stocks')
+      router.push('/holdings')
     } catch (err) {
       setError(err instanceof Error ? err.message : '削除に失敗しました')
     } finally {
@@ -146,7 +146,9 @@ export default function StockForm({
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
             <Link
-              href={mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'}
+              href={
+                mode === 'edit' && stockId ? `/stocks/${stockId}` : '/holdings'
+              }
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
@@ -157,7 +159,11 @@ export default function StockForm({
           </h1>
         </div>
         {mode === 'edit' && (
-          <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
             {deleting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -221,7 +227,9 @@ export default function StockForm({
                 </label>
                 <select
                   value={formData.holdingCompany}
-                  onChange={(e) => handleChange('holdingCompany', e.target.value)}
+                  onChange={(e) =>
+                    handleChange('holdingCompany', e.target.value)
+                  }
                   className="w-full p-2 border rounded-md"
                 >
                   <option value="">選択してください</option>
@@ -233,7 +241,10 @@ export default function StockForm({
                 </select>
                 {brokers.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    <a href="/settings" className="text-primary hover:underline">
+                    <a
+                      href="/settings"
+                      className="text-primary hover:underline"
+                    >
                       設定
                     </a>
                     から証券会社を登録してください
@@ -252,7 +263,9 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">セクター</label>
+                <label className="block text-sm font-medium mb-1">
+                  セクター
+                </label>
                 <input
                   type="text"
                   value={formData.marketSector}
@@ -262,7 +275,9 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">投資目的</label>
+                <label className="block text-sm font-medium mb-1">
+                  投資目的
+                </label>
                 <input
                   type="text"
                   value={formData.purpose}
@@ -272,7 +287,9 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">目標価格</label>
+                <label className="block text-sm font-medium mb-1">
+                  目標価格
+                </label>
                 <input
                   type="number"
                   step="0.0001"
@@ -287,15 +304,18 @@ export default function StockForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>配当情報</CardTitle>
+            <CardTitle>配当情報（予想）</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              想定年間配当の参考値。実際の受取は配当ページで記録します。
+              期待される 1 株あたり年間配当。実際の受取記録は配当ページ /
+              銘柄詳細から追加します。
             </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">1株配当金</label>
+                <label className="block text-sm font-medium mb-1">
+                  1株配当金（予想）
+                </label>
                 <input
                   type="number"
                   step="0.0001"
@@ -307,7 +327,9 @@ export default function StockForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">配当利回り</label>
+                <label className="block text-sm font-medium mb-1">
+                  配当利回り（予想）
+                </label>
                 <input
                   type="number"
                   step="0.0001"
@@ -326,7 +348,9 @@ export default function StockForm({
         <div className="flex justify-end space-x-4">
           <Button asChild variant="outline">
             <Link
-              href={mode === 'edit' && stockId ? `/stocks/${stockId}` : '/stocks'}
+              href={
+                mode === 'edit' && stockId ? `/stocks/${stockId}` : '/holdings'
+              }
             >
               キャンセル
             </Link>

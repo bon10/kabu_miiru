@@ -1,17 +1,28 @@
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 
+// ダッシュボード用サマリ API。
+// 用語は docs/2-domain/ubiquitous-language.md を参照。
+//   - expectedAnnualDividend: 予想年間配当（マスタ由来）
+//   - ytdDividendReceived: YTD 配当（実際に受け取った金額、DividendHistory 由来、ADR 0004）
 export async function GET() {
   try {
-    const stocks = await prisma.stock.findMany()
+    const yearStart = new Date(new Date().getFullYear(), 0, 1)
+    const [stocks, ytdDividends] = await Promise.all([
+      prisma.stock.findMany(),
+      prisma.dividendHistory.findMany({
+        where: { paymentDate: { gte: yearStart } },
+        select: { dividendAmount: true },
+      }),
+    ])
     const holdingStocks = stocks.filter(stock => Number(stock.sharesHeld) > 0)
 
-    // 全体サマリーを計算
     const totalInvestment = stocks.reduce((sum, stock) => sum + Number(stock.investmentAmount), 0)
-    const totalCurrentValue = holdingStocks.reduce((sum, stock) => 
+    const totalCurrentValue = holdingStocks.reduce((sum, stock) =>
       sum + (Number(stock.currentPrice) * Number(stock.sharesHeld)), 0)
     const totalProfitLoss = stocks.reduce((sum, stock) => sum + Number(stock.profitLoss), 0)
-    const totalDividend = stocks.reduce((sum, stock) => sum + Number(stock.dividendAmount), 0)
+    const expectedAnnualDividend = stocks.reduce((sum, stock) => sum + Number(stock.dividendAmount), 0)
+    const ytdDividendReceived = ytdDividends.reduce((sum, d) => sum + Number(d.dividendAmount), 0)
     const totalProfitLossRate = totalInvestment > 0 ? totalProfitLoss / totalInvestment : 0
 
     // 証券会社数を計算
@@ -40,7 +51,8 @@ export async function GET() {
       totalCurrentValue,
       totalProfitLoss,
       totalProfitLossRate,
-      totalDividend,
+      expectedAnnualDividend,
+      ytdDividendReceived,
       stockCount: holdingStocks.length,
       companiesCount: companies.size,
       lastUpdated: lastPriceUpdate || new Date(),

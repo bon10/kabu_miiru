@@ -119,7 +119,7 @@ export default function StockDetailPage() {
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -137,7 +137,7 @@ export default function StockDetailPage() {
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
             <Button asChild variant="outline">
-              <Link href="/stocks">
+              <Link href="/holdings">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 戻る
               </Link>
@@ -155,7 +155,7 @@ export default function StockDetailPage() {
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -175,7 +175,7 @@ export default function StockDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -211,7 +211,7 @@ export default function StockDetailPage() {
           </Button>
           <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
             <Coins className="h-4 w-4 mr-2" />
-            配当を追加
+            受取配当を追加
           </Button>
           <Button asChild>
             <Link href={`/stocks/${stock.id}/edit`}>
@@ -302,25 +302,27 @@ export default function StockDetailPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">損益</p>
+                <p className="text-sm text-muted-foreground">評価損益</p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
                   {formatCurrency(stock.profitLoss)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">損益率</p>
+                <p className="text-sm text-muted-foreground">評価損益率</p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
                   {formatPercentage(stock.profitLossRate)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">配当利回り</p>
+                <p className="text-sm text-muted-foreground">
+                  配当利回り（予想）
+                </p>
                 <p className="text-2xl font-bold">
                   {formatPercentage(stock.dividendYield)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">配当金額</p>
+                <p className="text-sm text-muted-foreground">予想年間配当</p>
                 <p className="text-2xl font-bold">
                   {formatCurrency(stock.dividendAmount)}
                 </p>
@@ -442,18 +444,20 @@ export default function StockDetailPage() {
         </CardContent>
       </Card>
 
-      {/* 配当履歴 */}
+      {/* 受取配当履歴 */}
       {stock.dividendHistory.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>配当履歴 ({stock.dividendHistory.length}件)</CardTitle>
+            <CardTitle>
+              受取配当履歴 ({stock.dividendHistory.length}件)
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>配当種別</TableHead>
-                  <TableHead className="text-right">配当金額</TableHead>
+                  <TableHead className="text-right">受取金額</TableHead>
                   <TableHead>支払日</TableHead>
                 </TableRow>
               </TableHeader>

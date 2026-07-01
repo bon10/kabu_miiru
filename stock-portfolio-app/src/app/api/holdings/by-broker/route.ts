@@ -1,16 +1,25 @@
+import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 
 // 証券会社別の保有銘柄ビュー。
 // 各証券会社のサマリと、その下の銘柄リストを返す。
-// 保有株数 0 の銘柄は除外する（過去に売却済みでもう持っていない銘柄）。
-export async function GET() {
+// ドメイン用語は docs/2-domain/ubiquitous-language.md を参照。
+//   - デフォルト: 保有株数 > 0 の銘柄のみ（= 現保有）
+//   - includeZero=true: 過去に保有していた銘柄も含める
+export async function GET(request: NextRequest) {
   try {
+    const includeZero = request.nextUrl.searchParams.get('includeZero') === 'true'
     const yearStart = new Date(new Date().getFullYear(), 0, 1)
+
+    const stockWhere: Prisma.StockWhereInput = includeZero
+      ? {}
+      : { sharesHeld: { gt: 0 } }
 
     const [stocks, dividends] = await Promise.all([
       prisma.stock.findMany({
-        where: { sharesHeld: { gt: 0 } },
+        where: stockWhere,
         orderBy: { stockName: 'asc' },
       }),
       prisma.dividendHistory.findMany({

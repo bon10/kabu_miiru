@@ -1,8 +1,10 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -11,9 +13,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Building2, Coins, TrendingDown, TrendingUp } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Building2, Coins, Plus, TrendingDown, TrendingUp } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
+// 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
+//   - デフォルトは「保有」(sharesHeld > 0) のみ表示。
+//   - includeZero トグルで過去に保有していた銘柄も表示（銘柄マスタ全体を確認したい時用）。
 interface HoldingRow {
   id: number
   stockName: string
@@ -66,21 +79,68 @@ const fetcher = async (url: string) => {
 const profitColor = (value: number) =>
   value >= 0 ? 'text-green-600' : 'text-red-600'
 
+type ViewMode = 'by-broker' | 'flat'
+
 export default function HoldingsClient() {
-  const { data, isLoading } = useSWR<ApiResponse>(
-    '/api/holdings/by-broker',
+  const [viewMode, setViewMode] = useState<ViewMode>('by-broker')
+  const [includeZero, setIncludeZero] = useState(false)
+  const [newStockOpen, setNewStockOpen] = useState(false)
+
+  const { data, isLoading, mutate } = useSWR<ApiResponse>(
+    `/api/holdings/by-broker?includeZero=${includeZero}`,
     fetcher
   )
-  const brokers = data?.data.brokers ?? []
+
   const grand = data?.data.grandTotal
+
+  const brokers = useMemo(() => data?.data.brokers ?? [], [data])
+
+  // フラット表示のために全証券会社の holdings を平坦化してソート
+  const flatRows = useMemo(() => {
+    return brokers
+      .flatMap((b) =>
+        b.holdings.map((h) => ({ ...h, brokerName: b.brokerName }))
+      )
+      .sort((a, b) => b.investmentAmount - a.investmentAmount)
+  }, [brokers])
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">保有商品一覧</h1>
-        <p className="text-muted-foreground">
-          証券会社別の保有銘柄ビュー（保有株数 0 は非表示）
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">保有一覧</h1>
+          <p className="text-muted-foreground">
+            銘柄マスタと現状の保有・損益を一覧できます。
+            {includeZero ? '（過去保有含む）' : '（現保有のみ）'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeZero}
+              onChange={(e) => setIncludeZero(e.target.checked)}
+              className="rounded"
+            />
+            保有0の銘柄も表示
+          </label>
+          <Select
+            value={viewMode}
+            onValueChange={(v) => setViewMode(v as ViewMode)}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="by-broker">証券会社別</SelectItem>
+              <SelectItem value="flat">フラット</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setNewStockOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            新規銘柄登録
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -94,14 +154,14 @@ export default function HoldingsClient() {
               {grand?.brokerCount ?? '-'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {grand?.totalStocks ?? '-'}銘柄保有
+              {grand?.totalStocks ?? '-'}銘柄
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">投資総額</CardTitle>
+            <CardTitle className="text-sm font-medium">投資額</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -162,7 +222,74 @@ export default function HoldingsClient() {
       ) : brokers.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            保有銘柄がありません。
+            該当する銘柄がありません。
+          </CardContent>
+        </Card>
+      ) : viewMode === 'flat' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>銘柄一覧（{flatRows.length}件）</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>銘柄</TableHead>
+                  <TableHead>証券会社</TableHead>
+                  <TableHead>市場</TableHead>
+                  <TableHead className="text-right">保有株数</TableHead>
+                  <TableHead className="text-right">平均取得</TableHead>
+                  <TableHead className="text-right">現在価格</TableHead>
+                  <TableHead className="text-right">投資額</TableHead>
+                  <TableHead className="text-right">評価額</TableHead>
+                  <TableHead className="text-right">評価損益</TableHead>
+                  <TableHead className="text-right">今年の配当</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flatRows.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell>
+                      <Link
+                        href={`/stocks/${h.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {h.stockName}
+                      </Link>
+                      <div className="text-xs text-muted-foreground">
+                        {h.code}
+                      </div>
+                    </TableCell>
+                    <TableCell>{h.brokerName}</TableCell>
+                    <TableCell>{h.market}</TableCell>
+                    <TableCell className="text-right">{h.sharesHeld}</TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(h.avgAcquisitionPrice)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(h.currentPrice)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(h.investmentAmount)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(h.currentValue)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right ${profitColor(h.profitLoss)}`}
+                    >
+                      <div>{formatCurrency(h.profitLoss)}</div>
+                      <div className="text-xs">
+                        {formatPercentage(h.profitLossRate / 100)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {h.ytdDividend > 0 ? formatCurrency(h.ytdDividend) : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       ) : (
@@ -208,8 +335,8 @@ export default function HoldingsClient() {
                     <TableHead className="text-right">現在価格</TableHead>
                     <TableHead className="text-right">投資額</TableHead>
                     <TableHead className="text-right">評価額</TableHead>
-                    <TableHead className="text-right">損益</TableHead>
-                    <TableHead className="text-right">今年配当</TableHead>
+                    <TableHead className="text-right">評価損益</TableHead>
+                    <TableHead className="text-right">今年の配当</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -263,6 +390,12 @@ export default function HoldingsClient() {
           </Card>
         ))
       )}
+
+      <NewStockDialog
+        open={newStockOpen}
+        onOpenChange={setNewStockOpen}
+        onSubmitted={() => mutate()}
+      />
     </div>
   )
 }

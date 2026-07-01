@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  TrendingUp,
   BarChart3,
   Building2,
   History,
@@ -22,12 +21,7 @@ const navigation = [
     icon: BarChart3,
   },
   {
-    name: '銘柄一覧',
-    href: '/stocks',
-    icon: TrendingUp,
-  },
-  {
-    name: '保有',
+    name: '保有一覧',
     href: '/holdings',
     icon: Building2,
   },
@@ -42,7 +36,7 @@ const navigation = [
     icon: History,
   },
   {
-    name: '配当',
+    name: '配当（受取）',
     href: '/dividends',
     icon: Coins,
   },

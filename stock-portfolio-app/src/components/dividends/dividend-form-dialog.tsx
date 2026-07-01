@@ -42,9 +42,13 @@ export function DividendFormDialog({
   defaultStockId,
   onSubmitted,
 }: Props) {
-  const [stockId, setStockId] = useState<string>(defaultStockId ? String(defaultStockId) : '')
+  const [stockId, setStockId] = useState<string>(
+    defaultStockId ? String(defaultStockId) : ''
+  )
   const [dividendAmount, setDividendAmount] = useState('')
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [paymentDate, setPaymentDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [dividendType, setDividendType] = useState<DividendType>('期末')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,8 +109,10 @@ export function DividendFormDialog({
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>配当を追加</DialogTitle>
-            <DialogDescription>受け取った配当金を記録します。</DialogDescription>
+            <DialogTitle>受取配当を追加</DialogTitle>
+            <DialogDescription>
+              実際に受け取った配当金を記録します（銘柄マスタの予想配当とは別物）。
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
