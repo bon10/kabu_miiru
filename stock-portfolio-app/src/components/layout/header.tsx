@@ -2,7 +2,16 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, BarChart3, History, Coins, Upload, RefreshCw, Settings } from 'lucide-react'
+import {
+  TrendingUp,
+  BarChart3,
+  Building2,
+  History,
+  Coins,
+  Upload,
+  RefreshCw,
+  Settings,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -10,38 +19,43 @@ const navigation = [
   {
     name: 'ダッシュボード',
     href: '/',
-    icon: BarChart3
+    icon: BarChart3,
   },
   {
     name: '銘柄一覧',
     href: '/stocks',
-    icon: TrendingUp
+    icon: TrendingUp,
+  },
+  {
+    name: '保有',
+    href: '/holdings',
+    icon: Building2,
   },
   {
     name: 'ポートフォリオ',
     href: '/portfolio',
-    icon: BarChart3
+    icon: BarChart3,
   },
   {
     name: '取引履歴',
     href: '/transactions',
-    icon: History
+    icon: History,
   },
   {
     name: '配当',
     href: '/dividends',
-    icon: Coins
+    icon: Coins,
   },
   {
     name: 'インポート',
     href: '/import',
-    icon: Upload
+    icon: Upload,
   },
   {
     name: '設定',
     href: '/settings',
-    icon: Settings
-  }
+    icon: Settings,
+  },
 ]
 
 export default function Header() {
@@ -52,10 +66,10 @@ export default function Header() {
       const response = await fetch('/api/prices/update', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       })
-      
+
       if (response.ok) {
         // 成功時の処理（toastやリロード等）
         window.location.reload()
@@ -71,24 +85,23 @@ export default function Header() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center space-x-8">
             <Link href="/" className="text-xl font-bold text-primary">
-            株みーる
+              株みーる
             </Link>
-            
+
             <nav className="flex items-center space-x-6">
               {navigation.map((item) => {
                 const Icon = item.icon
-                const isActive = pathname === item.href || 
+                const isActive =
+                  pathname === item.href ||
                   (item.href !== '/' && pathname.startsWith(item.href))
-                
+
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
                     className={cn(
                       'flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary',
-                      isActive 
-                        ? 'text-primary' 
-                        : 'text-muted-foreground'
+                      isActive ? 'text-primary' : 'text-muted-foreground'
                     )}
                   >
                     <Icon className="h-4 w-4" />
