@@ -5,6 +5,7 @@ import Link from 'next/link'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -20,8 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Building2, Coins, Plus, TrendingDown, TrendingUp } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
+import {
+  Building2,
+  Coins,
+  Plus,
+  RefreshCw,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
+import { cn, formatCurrency, formatPercentage } from '@/lib/utils'
+import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
 // 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
@@ -40,6 +49,8 @@ interface HoldingRow {
   profitLoss: number
   profitLossRate: number
   ytdDividend: number
+  priceUpdateStatus: string
+  priceUpdateError: string | null
 }
 
 interface BrokerGroup {
@@ -78,6 +89,65 @@ const fetcher = async (url: string) => {
 
 const profitColor = (value: number) =>
   value >= 0 ? 'text-green-600' : 'text-red-600'
+
+// 銘柄名セル。フラット表示・証券会社別表示で共通。
+//   - 直近の価格更新が失敗した銘柄には「価格更新失敗」バッジを出し、
+//     マウスオーバーで priceUpdateError（失敗理由）を表示する。
+//   - 行ごとに個別の価格更新ボタンを持ち、その銘柄だけ再取得できる。
+//     完了後は onUpdated で一覧全体を再取得してバッジ・価格を反映する。
+function StockNameCell({
+  holding,
+  onUpdated,
+}: {
+  holding: HoldingRow
+  onUpdated: () => void
+}) {
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  const handleUpdate = async () => {
+    setIsUpdating(true)
+    try {
+      await requestPriceUpdate([holding.id])
+      onUpdated()
+    } catch (error) {
+      console.error('価格更新エラー:', error)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  return (
+    <TableCell>
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/stocks/${holding.id}`}
+          className="font-medium hover:underline"
+        >
+          {holding.stockName}
+        </Link>
+        {holding.priceUpdateStatus === 'ERROR' && (
+          <Badge
+            variant="destructive"
+            title={holding.priceUpdateError ?? '価格取得に失敗しました'}
+          >
+            価格更新失敗
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={handleUpdate}
+          disabled={isUpdating}
+          title="この銘柄の価格を更新"
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', isUpdating && 'animate-spin')} />
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">{holding.code}</div>
+    </TableCell>
+  )
+}
 
 type ViewMode = 'by-broker' | 'flat'
 
@@ -249,17 +319,7 @@ export default function HoldingsClient() {
               <TableBody>
                 {flatRows.map((h) => (
                   <TableRow key={h.id}>
-                    <TableCell>
-                      <Link
-                        href={`/stocks/${h.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {h.stockName}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">
-                        {h.code}
-                      </div>
-                    </TableCell>
+                    <StockNameCell holding={h} onUpdated={mutate} />
                     <TableCell>{h.brokerName}</TableCell>
                     <TableCell>{h.market}</TableCell>
                     <TableCell className="text-right">{h.sharesHeld}</TableCell>
@@ -342,17 +402,7 @@ export default function HoldingsClient() {
                 <TableBody>
                   {broker.holdings.map((h) => (
                     <TableRow key={h.id}>
-                      <TableCell>
-                        <Link
-                          href={`/stocks/${h.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {h.stockName}
-                        </Link>
-                        <div className="text-xs text-muted-foreground">
-                          {h.code}
-                        </div>
-                      </TableCell>
+                      <StockNameCell holding={h} onUpdated={mutate} />
                       <TableCell>{h.market}</TableCell>
                       <TableCell className="text-right">
                         {h.sharesHeld}

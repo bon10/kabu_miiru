@@ -1,24 +1,33 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
-  BarChart3,
+  LayoutDashboard,
   Building2,
   History,
   Coins,
   Upload,
   RefreshCw,
   Settings,
+  PieChart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { requestPriceUpdate } from '@/lib/price-update'
+
+// 価格更新の結果表示。成功のみ・一部失敗・全体失敗で色とメッセージを出し分ける。
+type UpdateResult =
+  | { type: 'success'; message: string }
+  | { type: 'warning'; message: string }
+  | { type: 'error'; message: string }
 
 const navigation = [
   {
     name: 'ダッシュボード',
     href: '/',
-    icon: BarChart3,
+    icon: LayoutDashboard,
   },
   {
     name: '保有一覧',
@@ -28,7 +37,7 @@ const navigation = [
   {
     name: 'ポートフォリオ',
     href: '/portfolio',
-    icon: BarChart3,
+    icon: PieChart,
   },
   {
     name: '取引履歴',
@@ -54,22 +63,38 @@ const navigation = [
 
 export default function Header() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [result, setResult] = useState<UpdateResult | null>(null)
 
   const handlePriceUpdate = async () => {
+    setIsUpdating(true)
+    setResult(null)
     try {
-      const response = await fetch('/api/prices/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+      const { updatedCount, failedCount } = await requestPriceUpdate()
 
-      if (response.ok) {
-        // 成功時の処理（toastやリロード等）
-        window.location.reload()
+      if (failedCount === 0) {
+        setResult({ type: 'success', message: `${updatedCount}件を更新しました` })
+      } else if (updatedCount === 0) {
+        setResult({
+          type: 'error',
+          message: `${failedCount}件すべて更新できませんでした`,
+        })
+      } else {
+        setResult({
+          type: 'warning',
+          message: `${updatedCount}件更新・${failedCount}件失敗`,
+        })
       }
+
+      // サーバーコンポーネント（各画面のDB表示）だけ再取得する。
+      // 全画面リロードだと結果メッセージが消えるため router.refresh を使う。
+      router.refresh()
     } catch (error) {
       console.error('価格更新エラー:', error)
+      setResult({ type: 'error', message: '価格更新に失敗しました' })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -107,14 +132,29 @@ export default function Header() {
           </div>
 
           <div className="flex items-center space-x-4">
+            {result && (
+              <span
+                className={cn(
+                  'text-sm',
+                  result.type === 'success' && 'text-green-600',
+                  result.type === 'warning' && 'text-yellow-600',
+                  result.type === 'error' && 'text-red-600'
+                )}
+              >
+                {result.message}
+              </span>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={handlePriceUpdate}
+              disabled={isUpdating}
               className="flex items-center space-x-2"
             >
-              <RefreshCw className="h-4 w-4" />
-              <span>価格更新</span>
+              <RefreshCw
+                className={cn('h-4 w-4', isUpdating && 'animate-spin')}
+              />
+              <span>{isUpdating ? '更新中...' : '価格更新'}</span>
             </Button>
           </div>
         </div>

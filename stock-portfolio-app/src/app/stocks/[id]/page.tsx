@@ -9,11 +9,13 @@ import {
   Plus,
   Minus,
   Coins,
+  RefreshCw,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
 import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
 import {
@@ -29,7 +31,9 @@ import {
   formatPercentage,
   formatDate,
   formatDateTime,
+  cn,
 } from '@/lib/utils'
+import { requestPriceUpdate } from '@/lib/price-update'
 
 interface Transaction {
   id: number
@@ -79,6 +83,7 @@ interface StockDetail {
   purpose?: string
   lastPriceUpdate?: string
   priceUpdateStatus: string
+  priceUpdateError?: string | null
   transactions: Transaction[]
   dividendHistory: DividendHistory[]
   priceHistory: PriceHistory[]
@@ -91,6 +96,7 @@ export default function StockDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
   const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
 
   const fetchStock = useCallback(async () => {
     try {
@@ -109,6 +115,20 @@ export default function StockDetailPage() {
       setLoading(false)
     }
   }, [params.id])
+
+  const handlePriceUpdate = async () => {
+    if (!stock) return
+    setIsUpdatingPrice(true)
+    try {
+      await requestPriceUpdate([stock.id])
+      // 更新後の現在価格・損益・失敗理由を反映するため再取得する
+      await fetchStock()
+    } catch (error) {
+      console.error('価格更新エラー:', error)
+    } finally {
+      setIsUpdatingPrice(false)
+    }
+  }
 
   useEffect(() => {
     if (params.id) fetchStock()
@@ -181,7 +201,17 @@ export default function StockDetailPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{stock.stockName}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">{stock.stockName}</h1>
+              {stock.priceUpdateStatus === 'ERROR' && (
+                <Badge
+                  variant="destructive"
+                  title={stock.priceUpdateError ?? '価格取得に失敗しました'}
+                >
+                  価格更新失敗
+                </Badge>
+              )}
+            </div>
             <p className="text-muted-foreground">
               {stock.code} | {stock.market} | {stock.holdingCompany}
             </p>
@@ -212,6 +242,16 @@ export default function StockDetailPage() {
           <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
             <Coins className="h-4 w-4 mr-2" />
             受取配当を追加
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handlePriceUpdate}
+            disabled={isUpdatingPrice}
+          >
+            <RefreshCw
+              className={cn('h-4 w-4 mr-2', isUpdatingPrice && 'animate-spin')}
+            />
+            {isUpdatingPrice ? '更新中...' : '価格更新'}
           </Button>
           <Button asChild>
             <Link href={`/stocks/${stock.id}/edit`}>

@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
       profitLoss: number
       profitLossRate: number
       ytdDividend: number
+      priceUpdateStatus: string
+      priceUpdateError: string | null
     }
 
     type BrokerGroup = {
@@ -84,6 +86,8 @@ export async function GET(request: NextRequest) {
         profitLoss,
         profitLossRate,
         ytdDividend,
+        priceUpdateStatus: s.priceUpdateStatus,
+        priceUpdateError: s.priceUpdateError,
       }
 
       const group = brokerMap.get(s.holdingCompany) ?? {
