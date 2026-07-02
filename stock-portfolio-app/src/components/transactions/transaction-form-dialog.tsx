@@ -28,12 +28,26 @@ export interface StockOption {
 
 type TransactionType = 'BUY' | 'SELL'
 
+// 編集対象の取引。指定されるとダイアログは編集モードになり、
+// 既存値を初期表示して PUT で更新する（銘柄の付け替えは非対応）。
+export interface EditableTransaction {
+  id: number
+  stockId: number
+  transactionType: TransactionType
+  shares: number
+  pricePerShare: number
+  fee: number
+  transactionDate: string
+  memo?: string | null
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   stocks: StockOption[]
   defaultStockId?: number
   defaultType?: TransactionType
+  transaction?: EditableTransaction | null
   onSubmitted?: () => void
 }
 
@@ -43,8 +57,10 @@ export function TransactionFormDialog({
   stocks,
   defaultStockId,
   defaultType = 'BUY',
+  transaction,
   onSubmitted,
 }: Props) {
+  const isEdit = !!transaction
   const [transactionType, setTransactionType] =
     useState<TransactionType>(defaultType)
   const [stockId, setStockId] = useState<string>(
@@ -61,7 +77,18 @@ export function TransactionFormDialog({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    if (transaction) {
+      // 編集モード: 既存の取引値を初期表示する
+      setTransactionType(transaction.transactionType)
+      setStockId(String(transaction.stockId))
+      setShares(String(transaction.shares))
+      setPricePerShare(String(transaction.pricePerShare))
+      setFee(String(transaction.fee))
+      setTransactionDate(transaction.transactionDate.slice(0, 10))
+      setMemo(transaction.memo ?? '')
+      setError(null)
+    } else {
       setTransactionType(defaultType)
       setStockId(defaultStockId ? String(defaultStockId) : '')
       setShares('')
@@ -71,11 +98,14 @@ export function TransactionFormDialog({
       setMemo('')
       setError(null)
     }
-  }, [open, defaultStockId, defaultType])
+  }, [open, defaultStockId, defaultType, transaction])
 
   const selectedStock = stocks.find((s) => s.id === Number(stockId))
   const sharesNum = Number(shares)
+  // 新規登録時のみ保有超過チェックを行う。編集時は対象取引自体が現保有株数に
+  // 含まれており単純比較できないため、サーバー側の再計算（売却はクランプ）に委ねる。
   const sellExceedsHolding =
+    !isEdit &&
     transactionType === 'SELL' &&
     selectedStock &&
     sharesNum > selectedStock.sharesHeld
@@ -110,19 +140,22 @@ export function TransactionFormDialog({
 
     setSubmitting(true)
     try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stockId: Number(stockId),
-          transactionType,
-          shares: sharesNum,
-          pricePerShare: Number(pricePerShare),
-          fee: Number(fee) || 0,
-          transactionDate,
-          memo: memo || undefined,
-        }),
-      })
+      const res = await fetch(
+        isEdit ? `/api/transactions/${transaction.id}` : '/api/transactions',
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stockId: Number(stockId),
+            transactionType,
+            shares: sharesNum,
+            pricePerShare: Number(pricePerShare),
+            fee: Number(fee) || 0,
+            transactionDate,
+            memo: memo || undefined,
+          }),
+        },
+      )
       const json = await res.json()
       if (!res.ok) {
         setError(json?.error?.message ?? '保存に失敗しました')
@@ -143,9 +176,11 @@ export function TransactionFormDialog({
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>新規取引追加</DialogTitle>
+            <DialogTitle>{isEdit ? '取引を編集' : '新規取引追加'}</DialogTitle>
             <DialogDescription>
-              購入または売却を登録します。売却時は保有株数を超えない範囲で指定してください。
+              {isEdit
+                ? '登録済みの取引内容を修正します。銘柄の変更はできません。'
+                : '購入または売却を登録します。売却時は保有株数を超えない範囲で指定してください。'}
             </DialogDescription>
           </DialogHeader>
 
@@ -168,7 +203,11 @@ export function TransactionFormDialog({
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">銘柄</label>
-              <Select value={stockId} onValueChange={setStockId}>
+              <Select
+                value={stockId}
+                onValueChange={setStockId}
+                disabled={isEdit}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="銘柄を選択" />
                 </SelectTrigger>
@@ -262,7 +301,7 @@ export function TransactionFormDialog({
               キャンセル
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? '保存中...' : '保存'}
+              {submitting ? '保存中...' : isEdit ? '更新' : '保存'}
             </Button>
           </DialogFooter>
         </form>

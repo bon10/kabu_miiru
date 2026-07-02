@@ -12,11 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { CalendarDays, Plus, Filter } from 'lucide-react'
+import { CalendarDays, Plus, Filter, Pencil, Trash2 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   TransactionFormDialog,
   type StockOption,
+  type EditableTransaction,
 } from '@/components/transactions/transaction-form-dialog'
 
 interface TransactionRow {
@@ -82,6 +83,7 @@ export default function TransactionsClient() {
   )
   const [sortBy, setSortBy] = useState('date-desc')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTx, setEditingTx] = useState<EditableTransaction | null>(null)
 
   const { data: txData, mutate: mutateTx } = useSWR<TransactionsResponse>(
     '/api/transactions?limit=200',
@@ -95,6 +97,53 @@ export default function TransactionsClient() {
     '/api/stocks?includeZero=true',
     fetcher
   )
+  const { data: settingsData } = useSWR<{
+    data: { allowTransactionEdit: boolean }
+  }>('/api/settings', fetcher)
+
+  // 取引履歴の編集・削除が設定で許可されているか。既定は無効。
+  const allowEdit = settingsData?.data.allowTransactionEdit ?? false
+
+  const openCreate = () => {
+    setEditingTx(null)
+    setDialogOpen(true)
+  }
+
+  const openEdit = (t: TransactionRow) => {
+    setEditingTx({
+      id: t.id,
+      stockId: t.stockId,
+      transactionType: t.transactionType,
+      shares: t.shares,
+      pricePerShare: t.pricePerShare,
+      fee: t.fee,
+      transactionDate: t.transactionDate,
+      memo: t.memo,
+    })
+    setDialogOpen(true)
+  }
+
+  const handleDelete = async (t: TransactionRow) => {
+    if (
+      !confirm(
+        `${t.stockName} の取引（${formatDate(t.transactionDate)}）を削除しますか？`
+      )
+    )
+      return
+    try {
+      const res = await fetch(`/api/transactions/${t.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        alert(json?.error?.message ?? '削除に失敗しました')
+        return
+      }
+      mutateTx()
+      mutateSum()
+    } catch (error) {
+      console.error('取引削除エラー:', error)
+      alert('削除に失敗しました')
+    }
+  }
 
   const summary = sumData?.data
   const stocks: StockOption[] = useMemo(
@@ -170,10 +219,7 @@ export default function TransactionsClient() {
           <h1 className="text-3xl font-bold">取引履歴</h1>
           <p className="text-muted-foreground">購入・売却取引の管理と分析</p>
         </div>
-        <Button
-          onClick={() => setDialogOpen(true)}
-          className="flex items-center space-x-2"
-        >
+        <Button onClick={openCreate} className="flex items-center space-x-2">
           <Plus className="h-4 w-4" />
           <span>新規取引追加</span>
         </Button>
@@ -323,16 +369,39 @@ export default function TransactionsClient() {
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="font-medium">
-                    {formatCurrency(t.totalAmount)}
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="font-medium">
+                      {formatCurrency(t.totalAmount)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {t.shares}株 × {formatCurrency(t.pricePerShare)}
+                    </div>
+                    {t.fee > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        手数料: {formatCurrency(t.fee)}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t.shares}株 × {formatCurrency(t.pricePerShare)}
-                  </div>
-                  {t.fee > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      手数料: {formatCurrency(t.fee)}
+
+                  {allowEdit && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(t)}
+                        title="この取引を編集"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(t)}
+                        title="この取引を削除"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -408,6 +477,7 @@ export default function TransactionsClient() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         stocks={stocks}
+        transaction={editingTx}
         onSubmitted={() => {
           mutateTx()
           mutateSum()

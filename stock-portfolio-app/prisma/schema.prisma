@@ -124,6 +124,15 @@ model Broker {
   updatedAt DateTime @updatedAt
 }
 
+// アプリ設定（キー・バリュー形式）
+// 例: key="allowTransactionEdit", value="true"/"false"
+//   取引履歴の編集・削除を許可するかのフラグ。誤操作防止のため既定は無効。
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // ENUM定義
 enum TransactionType {
   BUY

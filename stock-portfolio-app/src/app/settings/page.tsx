@@ -24,6 +24,8 @@ export default function SettingsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState('')
   const [error, setError] = useState('')
+  const [allowTransactionEdit, setAllowTransactionEdit] = useState(false)
+  const [savingFlag, setSavingFlag] = useState(false)
 
   const fetchBrokers = async () => {
     try {
@@ -37,8 +39,42 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch('/api/settings')
+      const result = await response.json()
+      setAllowTransactionEdit(result.data?.allowTransactionEdit ?? false)
+    } catch {
+      // 設定取得に失敗しても画面全体は使えるようにする（既定は無効のまま）
+    }
+  }
+
+  const handleToggleTransactionEdit = async (next: boolean) => {
+    setError('')
+    setSavingFlag(true)
+    // 楽観的に反映し、失敗したら元に戻す
+    setAllowTransactionEdit(next)
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'allowTransactionEdit', value: next }),
+      })
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error?.message || '設定の保存に失敗しました')
+      }
+    } catch (err) {
+      setAllowTransactionEdit(!next)
+      setError(err instanceof Error ? err.message : '設定の保存に失敗しました')
+    } finally {
+      setSavingFlag(false)
+    }
+  }
+
   useEffect(() => {
     fetchBrokers()
+    fetchSettings()
   }, [])
 
   const handleAdd = async () => {
@@ -220,6 +256,30 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>取引履歴の編集・削除</CardTitle>
+          <CardDescription>
+            通常は誤操作防止のため無効です。売値・買値の登録間違いを直したいときだけ有効にしてください。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowTransactionEdit}
+              onChange={(e) => handleToggleTransactionEdit(e.target.checked)}
+              disabled={savingFlag}
+              className="h-4 w-4 rounded"
+            />
+            <span className="text-sm">
+              取引履歴の編集・削除を許可する
+              {allowTransactionEdit ? '（有効）' : '（無効）'}
+            </span>
+          </label>
         </CardContent>
       </Card>
     </div>
