@@ -10,6 +10,7 @@ import {
   CardDescription,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
 interface Broker {
   id: number
@@ -267,19 +268,15 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm">取引履歴の編集・削除を許可する</span>
+            <Switch
               checked={allowTransactionEdit}
-              onChange={(e) => handleToggleTransactionEdit(e.target.checked)}
+              onCheckedChange={handleToggleTransactionEdit}
               disabled={savingFlag}
-              className="h-4 w-4 rounded"
+              aria-label="取引履歴の編集・削除を許可する"
             />
-            <span className="text-sm">
-              取引履歴の編集・削除を許可する
-              {allowTransactionEdit ? '（有効）' : '（無効）'}
-            </span>
-          </label>
+          </div>
         </CardContent>
       </Card>
     </div>
