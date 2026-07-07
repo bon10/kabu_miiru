@@ -29,7 +29,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
-import { cn, formatCurrency, formatPercentage } from '@/lib/utils'
+import { cn, formatCurrency, formatPrice, formatPercentage } from '@/lib/utils'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
@@ -141,7 +141,9 @@ function StockNameCell({
           disabled={isUpdating}
           title="この銘柄の価格を更新"
         >
-          <RefreshCw className={cn('h-3.5 w-3.5', isUpdating && 'animate-spin')} />
+          <RefreshCw
+            className={cn('h-3.5 w-3.5', isUpdating && 'animate-spin')}
+          />
         </Button>
       </div>
       <div className="text-xs text-muted-foreground">{holding.code}</div>
@@ -324,10 +326,10 @@ export default function HoldingsClient() {
                     <TableCell>{h.market}</TableCell>
                     <TableCell className="text-right">{h.sharesHeld}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(h.avgAcquisitionPrice)}
+                      {formatPrice(h.avgAcquisitionPrice, h.market)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(h.currentPrice)}
+                      {formatPrice(h.currentPrice, h.market)}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(h.investmentAmount)}
@@ -408,10 +410,10 @@ export default function HoldingsClient() {
                         {h.sharesHeld}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(h.avgAcquisitionPrice)}
+                        {formatPrice(h.avgAcquisitionPrice, h.market)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(h.currentPrice)}
+                        {formatPrice(h.currentPrice, h.market)}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(h.investmentAmount)}

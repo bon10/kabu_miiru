@@ -2,7 +2,7 @@
 
 ## 概要
 
-株みーるアプリでは、株価データの取得のために外部APIを使用しています。現在はYahoo Finance APIをメインとし、将来的に楽天RSSなどの補完APIの追加を予定しています。
+株みーるアプリでは、株価データの取得のために外部APIを使用しています。現在はYahoo Finance APIをメインとし、将来的に楽天RSSなどの補完APIの追加を予定しています。株価に加え、米国株を円換算するための USD/JPY 為替レートも Yahoo Finance から取得します。
 
 ## Yahoo Finance API
 
@@ -186,6 +186,47 @@ async function fetchWithDelay(
   return fetchStockPrice(symbol)
 }
 ```
+
+## USD/JPY 為替レート
+
+米国株はドル建てで取得・保存されるため、円換算用に USD/JPY レートを取得します（ADR 0005）。株価と同じ Yahoo Finance のチャートエンドポイントを、為替シンボル `USDJPY=X` に対して呼び出します。
+
+### 為替レート取得の基本情報
+
+- **エンドポイント**: `GET https://query1.finance.yahoo.com/v8/finance/chart/USDJPY=X`
+- **認証**: APIキー不要（株価と同じ非公式API）
+- **取得値**: `chart.result[0].meta.regularMarketPrice`（1 USD あたりの JPY。取得不可時は `previousClose` にフォールバック）
+- **更新頻度**: 1 日 1 回。当日のレートを `ExchangeRate` テーブル（`rateDate` ユニーク）にキャッシュし、当日レコードがあれば再取得しない
+- **フォールバック**: Yahoo 取得に失敗した場合は、保存済みの最新レートを使用する
+
+### 為替レートのレスポンス例
+
+```json
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "JPY",
+          "symbol": "USDJPY=X",
+          "regularMarketPrice": 161.31,
+          "previousClose": 161.09
+        }
+      }
+    ]
+  }
+}
+```
+
+### 為替レートの実装
+
+- 取得・キャッシュ：[getCurrentUsdJpyRate](../../src/lib/exchange-rate.ts)（`ExchangeRate` テーブルに日次保存。ダッシュボードは複数 API を並行で叩くため、当日レコードが無い初回の同時作成はユニーク制約の衝突を捕捉して読み直す）
+- 円換算：[toJpy](../../src/lib/currency.ts)（`market === '米国'` の金額のみレートを掛ける）
+- 単価の建値通貨表示：[formatPrice](../../src/lib/utils.ts)
+
+### 為替レートの注意点
+
+- 取得原価も評価額も**当日レート**で換算するため、損益に**為替損益は含まれない**（ADR 0005）。購入時レートを記録できるようになれば、取得原価だけ購入時レートで換算する方式に拡張する
 
 ## 楽天RSS API（将来実装）
 

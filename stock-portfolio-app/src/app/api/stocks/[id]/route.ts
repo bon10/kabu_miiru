@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { getMarketFromCode } from '@/lib/utils'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpy } from '@/lib/currency'
 
 export async function GET(
   request: NextRequest,
@@ -10,7 +12,7 @@ export async function GET(
   try {
     const { id: idStr } = await params
     const id = parseInt(idStr)
-    
+
     if (isNaN(id)) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', '無効なIDです'),
@@ -18,7 +20,7 @@ export async function GET(
       )
     }
 
-    const [stock, brokers] = await Promise.all([
+    const [stock, brokers, usdJpyRate] = await Promise.all([
       prisma.stock.findUnique({
         where: { id },
         include: {
@@ -37,7 +39,8 @@ export async function GET(
       prisma.broker.findMany({
         select: { id: true, name: true },
         orderBy: { name: 'asc' }
-      })
+      }),
+      getCurrentUsdJpyRate(),
     ])
 
     if (!stock) {
@@ -47,14 +50,17 @@ export async function GET(
       )
     }
 
+    // 投資額・評価損益は円ベース（米国株は当日レートで円換算）。
+    // 単価・取引履歴・価格履歴・配当はドル建てのまま返し、表示側で $ 表記する。
     return Response.json(createSuccessResponse({
       ...stock,
       sharesHeld: Number(stock.sharesHeld),
       avgAcquisitionPrice: Number(stock.avgAcquisitionPrice),
-      investmentAmount: Number(stock.investmentAmount),
+      investmentAmount: toJpy(Number(stock.investmentAmount), stock.market, usdJpyRate),
       currentPrice: Number(stock.currentPrice),
-      profitLoss: Number(stock.profitLoss),
+      profitLoss: toJpy(Number(stock.profitLoss), stock.market, usdJpyRate),
       profitLossRate: Number(stock.profitLossRate),
+      usdJpyRate,
       dividendPerShare: Number(stock.dividendPerShare),
       dividendYield: Number(stock.dividendYield),
       dividendAmount: Number(stock.dividendAmount),
@@ -90,7 +96,7 @@ export async function PUT(
     const { id: idStr } = await params
     const id = parseInt(idStr)
     const body = await request.json()
-    
+
     if (isNaN(id)) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', '無効なIDです'),
@@ -111,8 +117,8 @@ export async function PUT(
     }
 
     // 市場の自動判定（コードが変更された場合）
-    const market = body.code && body.code !== existingStock.code 
-      ? getMarketFromCode(body.code) 
+    const market = body.code && body.code !== existingStock.code
+      ? getMarketFromCode(body.code)
       : body.market || existingStock.market
 
     // 保有株数・平均取得単価・投資額・購入日は Transaction を Source of Truth
@@ -159,7 +165,7 @@ export async function DELETE(
   try {
     const { id: idStr } = await params
     const id = parseInt(idStr)
-    
+
     if (isNaN(id)) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', '無効なIDです'),

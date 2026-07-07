@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 
 // ポートフォリオ推移 API。
 // 月末時点でのスナップショットを返す：
@@ -14,10 +15,19 @@ export async function GET(request: NextRequest) {
     const monthsParam = searchParams.get('months')
     const months = monthsParam === 'all' ? null : parseInt(monthsParam ?? '24')
 
-    const [transactions, dividends] = await Promise.all([
+    const [transactions, dividends, stocks, usdJpyRate] = await Promise.all([
       prisma.transaction.findMany({ orderBy: { transactionDate: 'asc' } }),
       prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
+      prisma.stock.findMany({ select: { id: true, market: true } }),
+      getCurrentUsdJpyRate(),
     ])
+
+    // 米国株の取引はドル建てのため円換算する。購入時レートを持たないため
+    // 当日レートで換算する（サマリ等と同じ方針）。国内株は係数 1。
+    const jpyFactorByStock = new Map<number, number>()
+    for (const s of stocks) {
+      jpyFactorByStock.set(s.id, s.market === '米国' ? usdJpyRate : 1)
+    }
 
     if (transactions.length === 0 && dividends.length === 0) {
       return Response.json(createSuccessResponse({ snapshots: [] }))
@@ -57,9 +67,11 @@ export async function GET(request: NextRequest) {
       for (const tx of transactions) {
         if (tx.transactionDate > checkpoint) break
         const state = states.get(tx.stockId) ?? { shares: 0, costBasis: 0 }
+        const factor = jpyFactorByStock.get(tx.stockId) ?? 1 // 米国株は円換算
         const shares = Number(tx.shares)
-        const price = Number(tx.pricePerShare)
-        const fee = Number(tx.fee)
+        const price = Number(tx.pricePerShare) * factor // 円建て単価
+        const fee = Number(tx.fee) * factor
+        // costBasis は円建てで積み上げる（avgPrice も円建てになる）
 
         if (tx.transactionType === 'BUY') {
           state.costBasis += shares * price + fee

@@ -56,6 +56,21 @@ model Stock {
   priceHistory          PriceHistory[]
 }
 
+// 為替レート（日次キャッシュ）
+// 米国株の円換算に使う USD/JPY を 1 日 1 レコードで保存する。
+// Yahoo Finance の USDJPY=X から取得し、rateDate（適用日）でユニーク。
+model ExchangeRate {
+  id        Int      @id @default(autoincrement())
+  base      String   // 基軸通貨（例: USD）
+  quote     String   // 相手通貨（例: JPY）
+  rate      Decimal  @db.Decimal(15,6) // base 1 単位あたりの quote 額（例: 1 USD = 161.31 JPY）
+  rateDate  DateTime @db.Date // レート適用日（サーバーローカルの暦日）
+  source    String   // 取得元（yahoo）
+  createdAt DateTime @default(now())
+
+  @@unique([base, quote, rateDate])
+}
+
 // 価格履歴（新機能：価格取得機能のため）
 model PriceHistory {
   id            Int       @id @default(autoincrement())

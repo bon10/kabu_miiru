@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table'
 import {
   formatCurrency,
+  formatPrice,
   formatPercentage,
   formatDate,
   formatDateTime,
@@ -84,6 +85,7 @@ interface StockDetail {
   lastPriceUpdate?: string
   priceUpdateStatus: string
   priceUpdateError?: string | null
+  usdJpyRate?: number
   transactions: Transaction[]
   dividendHistory: DividendHistory[]
   priceHistory: PriceHistory[]
@@ -309,11 +311,13 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">平均取得単価</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.avgAcquisitionPrice)}
+                  {formatPrice(stock.avgAcquisitionPrice, stock.market)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">投資額</p>
+                <p className="text-sm text-muted-foreground">
+                  投資額{stock.market === '米国' && '（円換算）'}
+                </p>
                 <p className="text-2xl font-bold">
                   {formatCurrency(stock.investmentAmount)}
                 </p>
@@ -321,7 +325,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">現在価格</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.currentPrice)}
+                  {formatPrice(stock.currentPrice, stock.market)}
                 </p>
               </div>
             </div>
@@ -342,10 +346,17 @@ export default function StockDetailPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">評価損益</p>
+                <p className="text-sm text-muted-foreground">
+                  評価損益{stock.market === '米国' && '（円換算）'}
+                </p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
                   {formatCurrency(stock.profitLoss)}
                 </p>
+                {stock.market === '米国' && stock.usdJpyRate && (
+                  <p className="text-xs text-muted-foreground">
+                    ＄1 ≈ ¥{stock.usdJpyRate.toFixed(2)} 換算
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">評価損益率</p>
@@ -364,7 +375,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">予想年間配当</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.dividendAmount)}
+                  {formatPrice(stock.dividendAmount, stock.market)}
                 </p>
               </div>
             </div>
@@ -395,7 +406,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">目標価格</p>
                 <p className="font-medium">
-                  {formatCurrency(stock.targetPrice)}
+                  {formatPrice(stock.targetPrice, stock.market)}
                 </p>
               </div>
             )}
@@ -462,13 +473,13 @@ export default function StockDetailPage() {
                       {transaction.shares.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.pricePerShare)}
+                      {formatPrice(transaction.pricePerShare, stock.market)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.totalAmount)}
+                      {formatPrice(transaction.totalAmount, stock.market)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.fee)}
+                      {formatPrice(transaction.fee, stock.market)}
                     </TableCell>
                     <TableCell>
                       {formatDate(transaction.transactionDate)}
@@ -506,7 +517,7 @@ export default function StockDetailPage() {
                   <TableRow key={dividend.id}>
                     <TableCell>{dividend.dividendType}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(dividend.dividendAmount)}
+                      {formatPrice(dividend.dividendAmount, stock.market)}
                     </TableCell>
                     <TableCell>{formatDate(dividend.paymentDate)}</TableCell>
                   </TableRow>

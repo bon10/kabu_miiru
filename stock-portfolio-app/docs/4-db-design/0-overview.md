@@ -72,6 +72,12 @@ stock-portfolio-app/prisma/schema.prisma
 - **特徴**: 計算済みサマリーの保存
 - **用途**: ダッシュボード表示の最適化
 
+### ExchangeRate（為替レート日次キャッシュ）
+
+- **目的**: 米国株の円換算に使う USD/JPY レートの保存（ADR 0005）
+- **特徴**: `(base, quote, rateDate)` でユニーク。1 日 1 レコード
+- **用途**: Yahoo Finance `USDJPY=X` を日次取得し、表示・集計時の円換算に利用
+
 ## データ整合性戦略
 
 ### 参照整合性

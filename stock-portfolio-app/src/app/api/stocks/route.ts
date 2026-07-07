@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { getMarketFromCode } from '@/lib/utils'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpy } from '@/lib/currency'
 import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
@@ -19,11 +21,11 @@ export async function GET(request: NextRequest) {
     if (!includeZero) {
       where.sharesHeld = { gt: 0 }
     }
-    
+
     if (market) {
       where.market = market
     }
-    
+
     if (holdingCompany) {
       where.holdingCompany = holdingCompany
     }
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
     })
 
     // フィルターオプションを取得（証券会社はマスタから）
-    const [markets, brokers] = await Promise.all([
+    const [markets, brokers, usdJpyRate] = await Promise.all([
       prisma.stock.findMany({
         select: { market: true },
         distinct: ['market']
@@ -51,17 +53,20 @@ export async function GET(request: NextRequest) {
       prisma.broker.findMany({
         select: { name: true },
         orderBy: { name: 'asc' }
-      })
+      }),
+      getCurrentUsdJpyRate(),
     ])
 
+    // 金額（投資額・損益）は円ベース。米国株は当日レートで円換算する。
+    // 単価（平均取得・現在価格）はドル建てのまま返す。
     return Response.json(createSuccessResponse({
       stocks: stocks.map(stock => ({
         ...stock,
         sharesHeld: Number(stock.sharesHeld),
         avgAcquisitionPrice: Number(stock.avgAcquisitionPrice),
-        investmentAmount: Number(stock.investmentAmount),
+        investmentAmount: toJpy(Number(stock.investmentAmount), stock.market, usdJpyRate),
         currentPrice: Number(stock.currentPrice),
-        profitLoss: Number(stock.profitLoss),
+        profitLoss: toJpy(Number(stock.profitLoss), stock.market, usdJpyRate),
         profitLossRate: Number(stock.profitLossRate),
         dividendPerShare: Number(stock.dividendPerShare),
         dividendYield: Number(stock.dividendYield),
@@ -83,7 +88,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    
+
     // 必須フィールドの検証
     if (!body.stockName || !body.holdingCompany || !body.code) {
       return Response.json(

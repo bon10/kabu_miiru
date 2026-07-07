@@ -2,12 +2,16 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpy } from '@/lib/currency'
 
 // 証券会社別の保有銘柄ビュー。
 // 各証券会社のサマリと、その下の銘柄リストを返す。
 // ドメイン用語は docs/2-domain/ubiquitous-language.md を参照。
 //   - デフォルト: 保有株数 > 0 の銘柄のみ（= 現保有）
 //   - includeZero=true: 過去に保有していた銘柄も含める
+// 金額（投資額・評価額・損益）は円ベース。米国株は当日の USD/JPY レートで
+// 円換算する。単価（平均取得・現在価格）はドル建てのまま返し、表示側で $ 表記する。
 export async function GET(request: NextRequest) {
   try {
     const includeZero = request.nextUrl.searchParams.get('includeZero') === 'true'
@@ -17,7 +21,7 @@ export async function GET(request: NextRequest) {
       ? {}
       : { sharesHeld: { gt: 0 } }
 
-    const [stocks, dividends] = await Promise.all([
+    const [stocks, dividends, usdJpyRate] = await Promise.all([
       prisma.stock.findMany({
         where: stockWhere,
         orderBy: { stockName: 'asc' },
@@ -26,6 +30,7 @@ export async function GET(request: NextRequest) {
         where: { paymentDate: { gte: yearStart } },
         select: { stockId: true, dividendAmount: true },
       }),
+      getCurrentUsdJpyRate(),
     ])
 
     const ytdDividendByStock = new Map<number, number>()
@@ -66,11 +71,12 @@ export async function GET(request: NextRequest) {
 
     for (const s of stocks) {
       const sharesHeld = Number(s.sharesHeld)
-      const investmentAmount = Number(s.investmentAmount)
-      const currentPrice = Number(s.currentPrice)
-      const currentValue = sharesHeld * currentPrice
-      const profitLoss = Number(s.profitLoss)
-      const profitLossRate = Number(s.profitLossRate)
+      const currentPrice = Number(s.currentPrice) // 単価はドル建てのまま（表示側で $ 表記）
+      // 金額系は米国株のみ当日レートで円換算する
+      const investmentAmount = toJpy(Number(s.investmentAmount), s.market, usdJpyRate)
+      const currentValue = toJpy(sharesHeld * currentPrice, s.market, usdJpyRate)
+      const profitLoss = toJpy(Number(s.profitLoss), s.market, usdJpyRate)
+      const profitLossRate = Number(s.profitLossRate) // 率は換算不変
       const ytdDividend = ytdDividendByStock.get(s.id) ?? 0
 
       const row: HoldingRow = {
