@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table'
 import {
   formatCurrency,
+  formatMoney,
   formatPrice,
   formatPercentage,
   formatDate,
@@ -50,6 +51,7 @@ interface Transaction {
 interface DividendHistory {
   id: number
   dividendAmount: number
+  currency: string
   paymentDate: string
   dividendType: string
 }
@@ -99,6 +101,23 @@ export default function StockDetailPage() {
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
   const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
+
+  // 受取配当ダイアログに渡す銘柄候補。配列リテラルを毎レンダー生成すると
+  // ダイアログ側の初期化 effect が再発火して入力が消えるため、銘柄が変わる時だけ作り直す。
+  const dividendStockOptions = useMemo(
+    () =>
+      stock
+        ? [
+            {
+              id: stock.id,
+              stockName: stock.stockName,
+              code: stock.code,
+              market: stock.market,
+            },
+          ]
+        : [],
+    [stock]
+  )
 
   const fetchStock = useCallback(async () => {
     try {
@@ -283,13 +302,7 @@ export default function StockDetailPage() {
       <DividendFormDialog
         open={dividendDialogOpen}
         onOpenChange={setDividendDialogOpen}
-        stocks={[
-          {
-            id: stock.id,
-            stockName: stock.stockName,
-            code: stock.code,
-          },
-        ]}
+        stocks={dividendStockOptions}
         defaultStockId={stock.id}
         onSubmitted={() => fetchStock()}
       />
@@ -517,7 +530,7 @@ export default function StockDetailPage() {
                   <TableRow key={dividend.id}>
                     <TableCell>{dividend.dividendType}</TableCell>
                     <TableCell className="text-right">
-                      {formatPrice(dividend.dividendAmount, stock.market)}
+                      {formatMoney(dividend.dividendAmount, dividend.currency)}
                     </TableCell>
                     <TableCell>{formatDate(dividend.paymentDate)}</TableCell>
                   </TableRow>

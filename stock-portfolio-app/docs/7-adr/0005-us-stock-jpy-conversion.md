@@ -46,5 +46,6 @@ Accepted (2026-07-04)
 ## 関連
 
 - [ADR 0003 保有株数・投資額は Transaction を Source of Truth](0003-transaction-as-source-of-truth.md)（本 ADR の「読み取り時に射影する」考え方の土台）
+- [ADR 0006 受取配当は受取通貨をレコード単位で持つ](0006-dividend-receipt-currency.md)（本 ADR の換算原則を受取配当へ拡張。通貨を market ではなくレコードの currency で判定する）
 - [外部 API 連携仕様](../external-apis.md#usdjpy-為替レート)
 - [ユビキタス言語：為替・通貨関連](../2-domain/ubiquitous-language.md#為替通貨関連)

@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Coins, Plus, Trash2 } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatMoney } from '@/lib/utils'
 import {
   DividendFormDialog,
   type DividendStockOption,
@@ -34,6 +34,8 @@ interface DividendRow {
   stockCode: string
   holdingCompany: string
   dividendAmount: number
+  currency: string
+  dividendAmountJpy: number
   paymentDate: string
   dividendType: string
 }
@@ -68,7 +70,12 @@ interface SummaryResponse {
 
 interface StocksResponse {
   data: {
-    stocks: Array<{ id: number; stockName: string; code: string }>
+    stocks: Array<{
+      id: number
+      stockName: string
+      code: string
+      market: string
+    }>
   }
 }
 
@@ -104,6 +111,7 @@ export default function DividendsClient() {
         id: s.id,
         stockName: s.stockName,
         code: s.code,
+        market: s.market,
       })),
     [stocksData]
   )
@@ -300,7 +308,12 @@ export default function DividendsClient() {
                       <Badge variant="outline">{d.dividendType}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(d.dividendAmount)}
+                      {formatMoney(d.dividendAmount, d.currency)}
+                      {d.currency !== 'JPY' && (
+                        <div className="text-xs font-normal text-muted-foreground">
+                          ≈ {formatCurrency(d.dividendAmountJpy)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button

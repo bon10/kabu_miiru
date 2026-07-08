@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpyByCurrency } from '@/lib/currency'
 
 // 配当の年次・半期集計 API。
 // 集計はカレンダー年基準（ADR 0004）：上半期 = 1-6 月、下半期 = 7-12 月。
@@ -24,9 +26,16 @@ export async function GET(request: NextRequest) {
       }),
       prisma.dividendHistory.findMany({
         where: { paymentDate: { gte: prevYearStart, lt: yearStart } },
-        select: { dividendAmount: true },
+        select: { dividendAmount: true, currency: true },
       }),
     ])
+
+    // 集計は円ベースに統一する。USD 建ての配当は当日レートで円換算してから合算する。
+    // 対象年・前年に USD 建てが 1 件も無ければ換算不要なのでレート取得をスキップする。
+    const hasUsd =
+      thisYear.some((d) => d.currency === 'USD') ||
+      prevYear.some((d) => d.currency === 'USD')
+    const usdJpyRate = hasUsd ? await getCurrentUsdJpyRate() : 1
 
     let yearTotal = 0
     let firstHalfTotal = 0
@@ -45,7 +54,7 @@ export async function GET(request: NextRequest) {
     const byStock = new Map<number, StockBreakdown>()
 
     for (const d of thisYear) {
-      const amount = Number(d.dividendAmount)
+      const amount = toJpyByCurrency(Number(d.dividendAmount), d.currency, usdJpyRate)
       yearTotal += amount
       const isFirstHalf = d.paymentDate < halfYearBoundary
       if (isFirstHalf) firstHalfTotal += amount
@@ -68,7 +77,10 @@ export async function GET(request: NextRequest) {
       byStock.set(d.stockId, entry)
     }
 
-    const prevYearTotal = prevYear.reduce((sum, d) => sum + Number(d.dividendAmount), 0)
+    const prevYearTotal = prevYear.reduce(
+      (sum, d) => sum + toJpyByCurrency(Number(d.dividendAmount), d.currency, usdJpyRate),
+      0,
+    )
 
     return Response.json(
       createSuccessResponse({

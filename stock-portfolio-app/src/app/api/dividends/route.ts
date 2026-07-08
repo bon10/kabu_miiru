@@ -2,8 +2,12 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpyByCurrency } from '@/lib/currency'
 
-const ALLOWED_DIVIDEND_TYPES = ['期末', '中間', '特別'] as const
+// 期末/中間/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
+const ALLOWED_DIVIDEND_TYPES = ['期末', '中間', '特別', '分配金'] as const
+const ALLOWED_CURRENCIES = ['JPY', 'USD'] as const
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,6 +54,11 @@ export async function GET(request: NextRequest) {
       prisma.dividendHistory.count({ where }),
     ])
 
+    // USD 建ての配当があるときだけ当日レートを取得して円換算する。
+    // 円建てのみなら換算不要なので、外部リクエストを避けてレート取得をスキップする。
+    const hasUsd = dividends.some((d) => d.currency === 'USD')
+    const usdJpyRate = hasUsd ? await getCurrentUsdJpyRate() : 1
+
     return Response.json(
       createSuccessResponse({
         dividends: dividends.map((d) => ({
@@ -59,6 +68,8 @@ export async function GET(request: NextRequest) {
           stockCode: d.stock.code,
           holdingCompany: d.stock.holdingCompany,
           dividendAmount: Number(d.dividendAmount),
+          currency: d.currency,
+          dividendAmountJpy: toJpyByCurrency(Number(d.dividendAmount), d.currency, usdJpyRate),
           paymentDate: d.paymentDate.toISOString(),
           dividendType: d.dividendType,
         })),
@@ -108,6 +119,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 受取通貨。未指定なら従来どおり円建てとして扱う。
+    const currency = body.currency ?? 'JPY'
+    if (!ALLOWED_CURRENCIES.includes(currency)) {
+      return Response.json(
+        createErrorResponse(
+          'BAD_REQUEST',
+          `通貨は ${ALLOWED_CURRENCIES.join(' / ')} のいずれかを指定してください`,
+        ),
+        { status: 400 },
+      )
+    }
+
     const stock = await prisma.stock.findUnique({ where: { id: body.stockId } })
     if (!stock) {
       return Response.json(
@@ -120,6 +143,7 @@ export async function POST(request: NextRequest) {
       data: {
         stockId: body.stockId,
         dividendAmount,
+        currency,
         paymentDate: new Date(body.paymentDate),
         dividendType: body.dividendType,
       },
@@ -138,6 +162,7 @@ export async function POST(request: NextRequest) {
         stockCode: created.stock.code,
         holdingCompany: created.stock.holdingCompany,
         dividendAmount: Number(created.dividendAmount),
+        currency: created.currency,
         paymentDate: created.paymentDate.toISOString(),
         dividendType: created.dividendType,
       }),

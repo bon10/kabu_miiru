@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
-import { toJpy } from '@/lib/currency'
+import { toJpy, toJpyByCurrency } from '@/lib/currency'
 
 // ダッシュボード用サマリ API。
 // 用語は docs/2-domain/ubiquitous-language.md を参照。
@@ -15,7 +15,7 @@ export async function GET() {
       prisma.stock.findMany(),
       prisma.dividendHistory.findMany({
         where: { paymentDate: { gte: yearStart } },
-        select: { dividendAmount: true },
+        select: { dividendAmount: true, currency: true },
       }),
       getCurrentUsdJpyRate(),
     ])
@@ -35,7 +35,11 @@ export async function GET() {
     const totalCurrentValue = holdingStocks.reduce((sum, stock) => sum + currentValueJpy(stock), 0)
     const totalProfitLoss = stocks.reduce((sum, stock) => sum + profitLossJpy(stock), 0)
     const expectedAnnualDividend = stocks.reduce((sum, stock) => sum + dividendJpy(stock), 0)
-    const ytdDividendReceived = ytdDividends.reduce((sum, d) => sum + Number(d.dividendAmount), 0)
+    // 受取配当は配当ごとの受取通貨で保存されているため、USD 建ては当日レートで円換算して合算する
+    const ytdDividendReceived = ytdDividends.reduce(
+      (sum, d) => sum + toJpyByCurrency(Number(d.dividendAmount), d.currency, usdJpyRate),
+      0,
+    )
     const totalProfitLossRate = totalInvestment > 0 ? totalProfitLoss / totalInvestment : 0
 
     // 証券会社数を計算

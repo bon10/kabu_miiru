@@ -23,9 +23,17 @@ export interface DividendStockOption {
   id: number
   stockName: string
   code: string
+  market: string
 }
 
-type DividendType = '期末' | '中間' | '特別'
+type DividendType = '期末' | '中間' | '特別' | '分配金'
+type Currency = 'JPY' | 'USD'
+
+// 銘柄の市場から受取通貨の初期値を決める（米国株はドル受取が既定）。
+// ただし証券会社の円受取もあるため、フォーム上でユーザーが変更できる。
+function defaultCurrencyForMarket(market: string | undefined): Currency {
+  return market === '米国' ? 'USD' : 'JPY'
+}
 
 interface Props {
   open: boolean
@@ -46,6 +54,9 @@ export function DividendFormDialog({
     defaultStockId ? String(defaultStockId) : ''
   )
   const [dividendAmount, setDividendAmount] = useState('')
+  const [currency, setCurrency] = useState<Currency>('JPY')
+  // 通貨をユーザーが手動で選び直したか。選び直した後に銘柄を変えても勝手に上書きしない。
+  const [currencyTouched, setCurrencyTouched] = useState(false)
   const [paymentDate, setPaymentDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   )
@@ -57,11 +68,24 @@ export function DividendFormDialog({
     if (open) {
       setStockId(defaultStockId ? String(defaultStockId) : '')
       setDividendAmount('')
+      const initialMarket = stocks.find((s) => s.id === defaultStockId)?.market
+      setCurrency(defaultCurrencyForMarket(initialMarket))
+      setCurrencyTouched(false)
       setPaymentDate(new Date().toISOString().slice(0, 10))
       setDividendType('期末')
       setError(null)
     }
-  }, [open, defaultStockId])
+  }, [open, defaultStockId, stocks])
+
+  // 銘柄を選ぶと受取通貨の初期値をその市場に合わせる。
+  // ただしユーザーが通貨を明示的に変更済みなら尊重して上書きしない。
+  function handleStockChange(nextStockId: string) {
+    setStockId(nextStockId)
+    if (!currencyTouched) {
+      const market = stocks.find((s) => String(s.id) === nextStockId)?.market
+      setCurrency(defaultCurrencyForMarket(market))
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -85,6 +109,7 @@ export function DividendFormDialog({
         body: JSON.stringify({
           stockId: Number(stockId),
           dividendAmount: amount,
+          currency,
           paymentDate,
           dividendType,
         }),
@@ -118,7 +143,7 @@ export function DividendFormDialog({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">銘柄</label>
-              <Select value={stockId} onValueChange={setStockId}>
+              <Select value={stockId} onValueChange={handleStockChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="銘柄を選択" />
                 </SelectTrigger>
@@ -132,13 +157,31 @@ export function DividendFormDialog({
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">通貨</label>
+                <Select
+                  value={currency}
+                  onValueChange={(v) => {
+                    setCurrency(v as Currency)
+                    setCurrencyTouched(true)
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="JPY">円 (JPY)</SelectItem>
+                    <SelectItem value="USD">ドル (USD)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">配当金額</label>
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step="1"
+                  step={currency === 'USD' ? '0.01' : '1'}
                   min="0"
                   value={dividendAmount}
                   onChange={(e) => setDividendAmount(e.target.value)}
@@ -167,6 +210,7 @@ export function DividendFormDialog({
                   <SelectItem value="期末">期末</SelectItem>
                   <SelectItem value="中間">中間</SelectItem>
                   <SelectItem value="特別">特別</SelectItem>
+                  <SelectItem value="分配金">分配金（ETF・投信）</SelectItem>
                 </SelectContent>
               </Select>
             </div>

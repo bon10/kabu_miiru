@@ -16,3 +16,16 @@ export function isUsStock(market: string): boolean {
 export function toJpy(amount: number, market: string, usdJpyRate: number): number {
   return isUsStock(market) ? amount * usdJpyRate : amount
 }
+
+// 受取通貨コード。配当は銘柄の市場と独立に受取通貨を持つ（米国株の円受取があるため）。
+export type Currency = 'JPY' | 'USD'
+
+// 通貨コードで金額を円換算する。USD のみ当日レートを掛け、JPY はそのまま返す。
+// market ではなく通貨コードで判定する点が toJpy との違い（配当の受取通貨に使う）。
+export function toJpyByCurrency(
+  amount: number,
+  currency: string,
+  usdJpyRate: number,
+): number {
+  return currency === 'USD' ? amount * usdJpyRate : amount
+}

@@ -25,6 +25,17 @@ export function formatPrice(value: number, market: string): string {
   }).format(value)
 }
 
+// 金額を指定通貨（JPY / USD）建てで表示する。配当のように受取通貨を明示的に
+// 持つ値を、その通貨のまま見せるのに使う（円換算はしない）。
+export function formatMoney(value: number, currency: string): string {
+  const isUsd = currency === 'USD'
+  return new Intl.NumberFormat(isUsd ? 'en-US' : 'ja-JP', {
+    style: 'currency',
+    currency: isUsd ? 'USD' : 'JPY',
+    minimumFractionDigits: isUsd ? 2 : 0,
+  }).format(value)
+}
+
 export function formatPercentage(value: number): string {
   return `${(value * 100).toFixed(2)}%`
 }

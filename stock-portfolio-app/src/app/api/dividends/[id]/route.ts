@@ -31,6 +31,7 @@ export async function GET(
         stockCode: dividend.stock.code,
         holdingCompany: dividend.stock.holdingCompany,
         dividendAmount: Number(dividend.dividendAmount),
+        currency: dividend.currency,
         paymentDate: dividend.paymentDate.toISOString(),
         dividendType: dividend.dividendType,
       }),

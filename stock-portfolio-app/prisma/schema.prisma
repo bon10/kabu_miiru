@@ -108,7 +108,8 @@ model Transaction {
 model DividendHistory {
   id              Int       @id @default(autoincrement())
   stockId         Int
-  dividendAmount  Decimal   @db.Decimal(15,2)
+  dividendAmount  Decimal   @db.Decimal(15,2)  // 受取通貨（currency）建ての金額。集計時に当日レートで円換算する
+  currency        String    @default("JPY")    // 受取通貨（JPY / USD）。米国株でも証券会社の円受取があるため銘柄の市場とは独立に持つ
   paymentDate     DateTime
   dividendType    String    // 期末, 中間, 特別
   createdAt       DateTime  @default(now())
