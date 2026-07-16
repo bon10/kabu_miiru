@@ -37,7 +37,7 @@ interface DividendRow {
   currency: string
   dividendAmountJpy: number
   paymentDate: string
-  dividendType: string
+  dividendType: string | null
 }
 
 interface DividendsResponse {
@@ -305,7 +305,11 @@ export default function DividendsClient() {
                     </TableCell>
                     <TableCell>{d.holdingCompany}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{d.dividendType}</Badge>
+                      {d.dividendType ? (
+                        <Badge variant="outline">{d.dividendType}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMoney(d.dividendAmount, d.currency)}

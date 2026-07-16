@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,7 +26,9 @@ export interface DividendStockOption {
   market: string
 }
 
-type DividendType = '期末' | '中間' | '特別' | '分配金'
+// 配当種別は表示専用ラベルで集計には使わない。証券会社が期を示さず判別できないこともあるため未指定を許す。
+const DIVIDEND_TYPE_UNSPECIFIED = '__none__'
+type DividendType = '期末' | '中間' | '四半期' | '特別' | '分配金'
 type Currency = 'JPY' | 'USD'
 
 // 銘柄の市場から受取通貨の初期値を決める（米国株はドル受取が既定）。
@@ -60,22 +62,36 @@ export function DividendFormDialog({
   const [paymentDate, setPaymentDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   )
-  const [dividendType, setDividendType] = useState<DividendType>('期末')
+  // 未指定は DIVIDEND_TYPE_UNSPECIFIED。Radix Select は空文字の値を持てないためセンチネルで表す。
+  const [dividendType, setDividendType] = useState<
+    DividendType | typeof DIVIDEND_TYPE_UNSPECIFIED
+  >(DIVIDEND_TYPE_UNSPECIFIED)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 初期化に使うだけの props は ref に退避する。これらを effect の依存に入れると、
+  // タブ復帰時の SWR 再取得で stocks の参照が変わるたびにフォームがリセットされてしまうため。
+  const defaultStockIdRef = useRef(defaultStockId)
+  defaultStockIdRef.current = defaultStockId
+  const stocksRef = useRef(stocks)
+  stocksRef.current = stocks
+
+  // フォームの初期化はダイアログが開いた瞬間だけ行う（open が false→true に変わったとき）。
   useEffect(() => {
     if (open) {
-      setStockId(defaultStockId ? String(defaultStockId) : '')
+      const initialStockId = defaultStockIdRef.current
+      setStockId(initialStockId ? String(initialStockId) : '')
       setDividendAmount('')
-      const initialMarket = stocks.find((s) => s.id === defaultStockId)?.market
+      const initialMarket = stocksRef.current.find(
+        (s) => s.id === initialStockId
+      )?.market
       setCurrency(defaultCurrencyForMarket(initialMarket))
       setCurrencyTouched(false)
       setPaymentDate(new Date().toISOString().slice(0, 10))
-      setDividendType('期末')
+      setDividendType(DIVIDEND_TYPE_UNSPECIFIED)
       setError(null)
     }
-  }, [open, defaultStockId, stocks])
+  }, [open])
 
   // 銘柄を選ぶと受取通貨の初期値をその市場に合わせる。
   // ただしユーザーが通貨を明示的に変更済みなら尊重して上書きしない。
@@ -111,7 +127,9 @@ export function DividendFormDialog({
           dividendAmount: amount,
           currency,
           paymentDate,
-          dividendType,
+          // 未指定センチネルは送らず null にして、サーバー側で種別なし（NULL）として保存させる。
+          dividendType:
+            dividendType === DIVIDEND_TYPE_UNSPECIFIED ? null : dividendType,
         }),
       })
       const json = await res.json()
@@ -198,17 +216,27 @@ export function DividendFormDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">配当種別</label>
+              <label className="text-sm font-medium">配当種別（任意）</label>
               <Select
                 value={dividendType}
-                onValueChange={(v) => setDividendType(v as DividendType)}
+                onValueChange={(v) =>
+                  setDividendType(
+                    v as DividendType | typeof DIVIDEND_TYPE_UNSPECIFIED
+                  )
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={DIVIDEND_TYPE_UNSPECIFIED}>
+                    未指定
+                  </SelectItem>
                   <SelectItem value="期末">期末</SelectItem>
                   <SelectItem value="中間">中間</SelectItem>
+                  <SelectItem value="四半期">
+                    四半期（米国株など年4回）
+                  </SelectItem>
                   <SelectItem value="特別">特別</SelectItem>
                   <SelectItem value="分配金">分配金（ETF・投信）</SelectItem>
                 </SelectContent>

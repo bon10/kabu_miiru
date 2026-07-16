@@ -999,7 +999,9 @@ components:
           format: date
         dividendType:
           type: string
-          enum: [期末, 中間, 特別]
+          nullable: true
+          description: 表示専用ラベル。任意（未指定は null）。集計には使わない
+          enum: [期末, 中間, 四半期, 特別, 分配金]
         createdAt:
           type: string
           format: date-time

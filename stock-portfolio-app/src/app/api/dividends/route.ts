@@ -5,8 +5,9 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpyByCurrency } from '@/lib/currency'
 
-// 期末/中間/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
-const ALLOWED_DIVIDEND_TYPES = ['期末', '中間', '特別', '分配金'] as const
+// 期末/中間/四半期/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
+// 表示専用ラベルで集計には使わないため任意。証券会社が期を示さず判別できない場合は未指定（NULL）で保存できる。
+const ALLOWED_DIVIDEND_TYPES = ['期末', '中間', '四半期', '特別', '分配金'] as const
 const ALLOWED_CURRENCIES = ['JPY', 'USD'] as const
 
 export async function GET(request: NextRequest) {
@@ -92,8 +93,7 @@ export async function POST(request: NextRequest) {
     if (
       !body.stockId ||
       body.dividendAmount === undefined ||
-      !body.paymentDate ||
-      !body.dividendType
+      !body.paymentDate
     ) {
       return Response.json(
         createErrorResponse('BAD_REQUEST', '必須フィールドが不足しています'),
@@ -109,7 +109,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!ALLOWED_DIVIDEND_TYPES.includes(body.dividendType)) {
+    // 配当種別は任意。指定された場合のみ許可値を検証し、未指定は NULL として保存する。
+    const dividendType =
+      body.dividendType === undefined || body.dividendType === null || body.dividendType === ''
+        ? null
+        : body.dividendType
+    if (dividendType !== null && !ALLOWED_DIVIDEND_TYPES.includes(dividendType)) {
       return Response.json(
         createErrorResponse(
           'BAD_REQUEST',
@@ -145,7 +150,7 @@ export async function POST(request: NextRequest) {
         dividendAmount,
         currency,
         paymentDate: new Date(body.paymentDate),
-        dividendType: body.dividendType,
+        dividendType,
       },
       include: {
         stock: {

@@ -53,7 +53,7 @@ interface DividendHistory {
   dividendAmount: number
   currency: string
   paymentDate: string
-  dividendType: string
+  dividendType: string | null
 }
 
 interface PriceHistory {
@@ -528,7 +528,7 @@ export default function StockDetailPage() {
               <TableBody>
                 {stock.dividendHistory.map((dividend) => (
                   <TableRow key={dividend.id}>
-                    <TableCell>{dividend.dividendType}</TableCell>
+                    <TableCell>{dividend.dividendType ?? '—'}</TableCell>
                     <TableCell className="text-right">
                       {formatMoney(dividend.dividendAmount, dividend.currency)}
                     </TableCell>
