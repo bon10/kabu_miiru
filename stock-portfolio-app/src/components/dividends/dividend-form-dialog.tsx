@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 
 export interface DividendStockOption {
   id: number
@@ -161,18 +162,17 @@ export function DividendFormDialog({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">銘柄</label>
-              <Select value={stockId} onValueChange={handleStockChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="銘柄を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stocks.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.stockName}（{s.code}）
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={stockId}
+                onValueChange={handleStockChange}
+                placeholder="銘柄を選択"
+                searchPlaceholder="銘柄名・コードで検索..."
+                options={stocks.map((s) => ({
+                  value: String(s.id),
+                  label: `${s.stockName}（${s.code}）`,
+                  keywords: s.code,
+                }))}
+              />
             </div>
 
             <div className="grid grid-cols-3 gap-3">
