@@ -25,9 +25,9 @@ pnpm install
 
 **データベース操作:**
 ```bash
-pnpm dlx prisma generate    # Prismaクライアントの生成
-pnpm dlx prisma db push     # データベースへのスキーマ変更の反映
-pnpm dlx prisma studio      # データベースGUIの起動
+pnpm db:generate            # Prismaクライアントの生成
+pnpm db:push                # データベースへのスキーマ変更の反映
+pnpm db:studio              # データベースGUIの起動
 pnpm db:reset               # データベースのリセット
 ```
 
@@ -111,7 +111,7 @@ pnpm dlx prettier --write .
 ### 株価データ処理
 - **日本株**: 数字コード（例："7203"）は自動的に".T"サフィックス付加
 - **米国株**: 標準ティッカーシンボル使用
-- **現在**: モックデータ生成システム（実際のAPI統合準備完了）
+- **価格取得元**: Yahoo Finance 非公式API（`query1.finance.yahoo.com/v8/finance/chart`）を直接呼び出し。取得失敗時のみモックデータ（乱数）にフォールバック
 - **価格更新**: ステータス追跡（SUCCESS/ERROR/PENDING）
 - **市場セッション**: 前場・後場・時間外取引の識別
 
@@ -138,9 +138,10 @@ pnpm dlx prettier --write .
 - **コンポーネント**: 機能ごとに分離された再利用可能なコンポーネント
 
 ### 株価取得システム
-- **現在の実装**: モックデータ生成（開発用）
-- **将来の拡張**: Yahoo Finance、Alpha Vantage、Polygon APIの統合準備完了
-- **エラーハンドリング**: 価格取得失敗時の適切なエラー処理
+- **現在の実装**: Yahoo Finance 非公式API（v8 chart エンドポイント）から実際の株価を取得（`src/lib/stock-price.ts`）
+- **フォールバック**: API呼び出しが失敗した場合のみ、乱数ベースのモック価格を返す（開発用）。この際 `priceSource` は `yahoo` のまま `SUCCESS` として保存されるため、実データと区別できない点に注意
+- **更新対象**: 保有株数 > 0 の銘柄。銘柄ごとに直列処理（並列化なし）
+- **将来の拡張**: Alpha Vantage、Polygon など正式API・複数ソース対応の余地あり
 - **レート制限**: API呼び出し制限の考慮
 
 ### データベース設計

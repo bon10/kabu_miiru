@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Agentation } from "agentation";
 import "./globals.css";
 import MainLayout from "@/components/layout/main-layout";
 
@@ -29,6 +30,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MainLayout>{children}</MainLayout>
+        {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
   );

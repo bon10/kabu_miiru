@@ -1,57 +1,100 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { TrendingUp, BarChart3, History, Upload, RefreshCw } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Building2,
+  History,
+  Coins,
+  Upload,
+  RefreshCw,
+  Settings,
+  PieChart,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { requestPriceUpdate } from '@/lib/price-update'
+
+// 価格更新の結果表示。成功のみ・一部失敗・全体失敗で色とメッセージを出し分ける。
+type UpdateResult =
+  | { type: 'success'; message: string }
+  | { type: 'warning'; message: string }
+  | { type: 'error'; message: string }
 
 const navigation = [
   {
     name: 'ダッシュボード',
     href: '/',
-    icon: BarChart3
+    icon: LayoutDashboard,
   },
   {
-    name: '銘柄一覧',
-    href: '/stocks',
-    icon: TrendingUp
+    name: '保有一覧',
+    href: '/holdings',
+    icon: Building2,
   },
   {
     name: 'ポートフォリオ',
     href: '/portfolio',
-    icon: BarChart3
+    icon: PieChart,
   },
   {
     name: '取引履歴',
     href: '/transactions',
-    icon: History
+    icon: History,
+  },
+  {
+    name: '配当（受取）',
+    href: '/dividends',
+    icon: Coins,
   },
   {
     name: 'インポート',
     href: '/import',
-    icon: Upload
-  }
+    icon: Upload,
+  },
+  {
+    name: '設定',
+    href: '/settings',
+    icon: Settings,
+  },
 ]
 
 export default function Header() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [result, setResult] = useState<UpdateResult | null>(null)
 
   const handlePriceUpdate = async () => {
+    setIsUpdating(true)
+    setResult(null)
     try {
-      const response = await fetch('/api/prices/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (response.ok) {
-        // 成功時の処理（toastやリロード等）
-        window.location.reload()
+      const { updatedCount, failedCount } = await requestPriceUpdate()
+
+      if (failedCount === 0) {
+        setResult({ type: 'success', message: `${updatedCount}件を更新しました` })
+      } else if (updatedCount === 0) {
+        setResult({
+          type: 'error',
+          message: `${failedCount}件すべて更新できませんでした`,
+        })
+      } else {
+        setResult({
+          type: 'warning',
+          message: `${updatedCount}件更新・${failedCount}件失敗`,
+        })
       }
+
+      // サーバーコンポーネント（各画面のDB表示）だけ再取得する。
+      // 全画面リロードだと結果メッセージが消えるため router.refresh を使う。
+      router.refresh()
     } catch (error) {
       console.error('価格更新エラー:', error)
+      setResult({ type: 'error', message: '価格更新に失敗しました' })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -61,24 +104,23 @@ export default function Header() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center space-x-8">
             <Link href="/" className="text-xl font-bold text-primary">
-            株みーる
+              株みーる
             </Link>
-            
+
             <nav className="flex items-center space-x-6">
               {navigation.map((item) => {
                 const Icon = item.icon
-                const isActive = pathname === item.href || 
+                const isActive =
+                  pathname === item.href ||
                   (item.href !== '/' && pathname.startsWith(item.href))
-                
+
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
                     className={cn(
                       'flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary',
-                      isActive 
-                        ? 'text-primary' 
-                        : 'text-muted-foreground'
+                      isActive ? 'text-primary' : 'text-muted-foreground'
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -90,14 +132,29 @@ export default function Header() {
           </div>
 
           <div className="flex items-center space-x-4">
+            {result && (
+              <span
+                className={cn(
+                  'text-sm',
+                  result.type === 'success' && 'text-green-600',
+                  result.type === 'warning' && 'text-yellow-600',
+                  result.type === 'error' && 'text-red-600'
+                )}
+              >
+                {result.message}
+              </span>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={handlePriceUpdate}
+              disabled={isUpdating}
               className="flex items-center space-x-2"
             >
-              <RefreshCw className="h-4 w-4" />
-              <span>価格更新</span>
+              <RefreshCw
+                className={cn('h-4 w-4', isUpdating && 'animate-spin')}
+              />
+              <span>{isUpdating ? '更新中...' : '価格更新'}</span>
             </Button>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
+import PortfolioTimelineChart from '@/components/portfolio/portfolio-timeline-chart'
 
 interface PortfolioClientProps {
   portfolioData: {
@@ -46,8 +47,33 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'
 export default function PortfolioClient({ portfolioData }: PortfolioClientProps) {
   const [activeTab, setActiveTab] = useState('by-stock')
 
-  const renderCustomizedLabel = (entry: any) => {
-    return `${entry.percentage.toFixed(1)}%`
+  // 5% 未満のスライスはラベル非表示。Legend は表示せず、右側の詳細一覧で代替する。
+  const renderCustomizedLabel = (entry: Record<string, unknown>) => {
+    const pct = entry.percentage as number
+    if (pct < 5) return ''
+    return `${pct.toFixed(1)}%`
+  }
+
+  // 円グラフ用のカスタム Tooltip。スライス名・投資額・構成比を表示する。
+  const renderPieTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean
+    payload?: Array<{ name?: string; value?: number; payload?: { percentage?: number } }>
+  }) => {
+    if (!active || !payload || payload.length === 0) return null
+    const item = payload[0]
+    const pct = item.payload?.percentage
+    return (
+      <div className="bg-background border rounded-md px-3 py-2 shadow-md text-sm">
+        <div className="font-medium">{item.name}</div>
+        <div className="text-muted-foreground">
+          投資額: {formatCurrency(item.value ?? 0)}
+          {pct !== undefined ? `（${pct.toFixed(1)}%）` : ''}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -60,11 +86,12 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="by-stock">銘柄別構成</TabsTrigger>
           <TabsTrigger value="by-company">証券会社別</TabsTrigger>
           <TabsTrigger value="by-market">市場別</TabsTrigger>
           <TabsTrigger value="performance">パフォーマンス</TabsTrigger>
+          <TabsTrigger value="timeline">推移</TabsTrigger>
         </TabsList>
 
         <TabsContent value="by-stock" className="space-y-4">
@@ -86,15 +113,13 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
                         outerRadius={120}
                         fill="#8884d8"
                         dataKey="investmentAmount"
+                        nameKey="stockName"
                       >
                         {portfolioData.composition.byStock.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={(value: number) => [formatCurrency(value), '投資額']}
-                      />
-                      <Legend />
+                      <Tooltip content={renderPieTooltip} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -144,15 +169,13 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
                         outerRadius={120}
                         fill="#8884d8"
                         dataKey="investmentAmount"
+                        nameKey="holdingCompany"
                       >
                         {portfolioData.composition.byCompany.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={(value: number) => [formatCurrency(value), '投資額']}
-                      />
-                      <Legend />
+                      <Tooltip content={renderPieTooltip} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -202,15 +225,13 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
                         outerRadius={120}
                         fill="#8884d8"
                         dataKey="investmentAmount"
+                        nameKey="market"
                       >
                         {portfolioData.composition.byMarket.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={(value: number) => [formatCurrency(value), '投資額']}
-                      />
-                      <Legend />
+                      <Tooltip content={renderPieTooltip} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -282,6 +303,10 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="space-y-4">
+          <PortfolioTimelineChart />
         </TabsContent>
       </Tabs>
     </div>

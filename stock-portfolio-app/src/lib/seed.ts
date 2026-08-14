@@ -30,7 +30,7 @@ export async function seedDatabase() {
         marketSector: '自動車',
         purpose: '長期保有',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 2,
@@ -52,7 +52,7 @@ export async function seedDatabase() {
         marketSector: 'テクノロジー',
         purpose: '成長株投資',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 3,
@@ -74,7 +74,7 @@ export async function seedDatabase() {
         marketSector: 'エンターテインメント',
         purpose: 'ポートフォリオ分散',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 4,
@@ -96,7 +96,7 @@ export async function seedDatabase() {
         marketSector: 'ソフトウェア',
         purpose: 'テクノロジー投資',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       },
       {
         no: 5,
@@ -118,7 +118,7 @@ export async function seedDatabase() {
         marketSector: 'ゲーム',
         purpose: 'エンターテインメント株',
         lastPriceUpdate: new Date(),
-        priceUpdateStatus: 'SUCCESS'
+        priceUpdateStatus: 'SUCCESS' as const
       }
     ]
 
@@ -147,11 +147,11 @@ export async function seedDatabase() {
       for (let i = 0; i < 7; i++) {
         const date = new Date(today)
         date.setDate(date.getDate() - i)
-        
+
         const basePrice = stockData.currentPrice
         const variation = (Math.random() - 0.5) * 0.05 // ±2.5%の変動
         const price = basePrice * (1 + variation)
-        
+
         await prisma.priceHistory.create({
           data: {
             stockId: stock.id,
@@ -164,11 +164,13 @@ export async function seedDatabase() {
       }
 
       // 配当履歴がある場合は作成
+      // 受取通貨は銘柄の市場に合わせる（米国株の配当はドル建て）
       if (stockData.dividendAmount > 0) {
         await prisma.dividendHistory.create({
           data: {
             stockId: stock.id,
             dividendAmount: stockData.dividendAmount,
+            currency: stockData.market === '米国' ? 'USD' : 'JPY',
             paymentDate: new Date('2023-12-15'),
             dividendType: '期末'
           }

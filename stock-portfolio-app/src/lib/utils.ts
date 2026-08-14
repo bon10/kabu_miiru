@@ -13,6 +13,29 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+// 1 株あたりの価格を「その銘柄の建値通貨」で表示する。
+// 米国株はドル建て（$）、国内株は円建て（¥）。評価額・損益などの金額は
+// 円換算済み（formatCurrency）で表示するのに対し、単価は元の通貨で見せる。
+export function formatPrice(value: number, market: string): string {
+  const isUs = market === '米国'
+  return new Intl.NumberFormat(isUs ? 'en-US' : 'ja-JP', {
+    style: 'currency',
+    currency: isUs ? 'USD' : 'JPY',
+    minimumFractionDigits: isUs ? 2 : 0
+  }).format(value)
+}
+
+// 金額を指定通貨（JPY / USD）建てで表示する。配当のように受取通貨を明示的に
+// 持つ値を、その通貨のまま見せるのに使う（円換算はしない）。
+export function formatMoney(value: number, currency: string): string {
+  const isUsd = currency === 'USD'
+  return new Intl.NumberFormat(isUsd ? 'en-US' : 'ja-JP', {
+    style: 'currency',
+    currency: isUsd ? 'USD' : 'JPY',
+    minimumFractionDigits: isUsd ? 2 : 0,
+  }).format(value)
+}
+
 export function formatPercentage(value: number): string {
   return `${(value * 100).toFixed(2)}%`
 }
@@ -23,7 +46,7 @@ export function formatDate(date: Date | string): string {
     const d = new Date(date)
     return d.toISOString().split('T')[0]
   }
-  
+
   const d = new Date(date)
   return new Intl.DateTimeFormat('ja-JP', {
     year: 'numeric',
@@ -38,7 +61,7 @@ export function formatDateTime(date: Date | string): string {
     const d = new Date(date)
     return d.toISOString().replace('T', ' ').substring(0, 16)
   }
-  
+
   const d = new Date(date)
   return new Intl.DateTimeFormat('ja-JP', {
     year: 'numeric',
@@ -67,7 +90,7 @@ export function calculateProfitLoss(currentPrice: number, avgPrice: number, shar
   const investmentAmount = avgPrice * shares
   const profitLoss = currentValue - investmentAmount
   const profitLossRate = investmentAmount > 0 ? profitLoss / investmentAmount : 0
-  
+
   return { profitLoss, profitLossRate }
 }
 

@@ -11,7 +11,7 @@ services:
       MYSQL_USER: ${DB_USER:-stock_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-stock_password}
     ports:
-      - "3306:3306"
+      - "3406:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init-db:/docker-entrypoint-initdb.d

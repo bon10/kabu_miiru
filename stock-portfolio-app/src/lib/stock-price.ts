@@ -26,12 +26,14 @@ export async function fetchStockPrice(symbol: string): Promise<StockPrice | null
     
     // Yahoo Finance APIから実際の株価を取得
     const priceData = await fetchFromYahooFinance(apiSymbol)
-    
+
+    // 取得できなければ null を返し、呼び出し側（/api/prices/update）で
+    // 「更新失敗」として記録させる。偽の価格でごまかさない。
     if (!priceData) {
-      console.warn(`No price data available for ${symbol}, using mock data`)
-      return generateMockPriceData(symbol)
+      console.warn(`No price data available for ${symbol}`)
+      return null
     }
-    
+
     return {
       symbol,
       currentPrice: priceData.regularMarketPrice,
@@ -42,15 +44,22 @@ export async function fetchStockPrice(symbol: string): Promise<StockPrice | null
     }
   } catch (error) {
     console.error(`Failed to fetch price for ${symbol}:`, error)
-    // エラー時はモックデータを返す（開発用）
-    return generateMockPriceData(symbol)
+    // エラー時も null を返し、呼び出し側で失敗として扱わせる
+    return null
   }
 }
 
 /**
  * Yahoo Finance APIから株価データを取得
  */
-async function fetchFromYahooFinance(symbol: string): Promise<any | null> {
+interface YahooFinanceResult {
+  regularMarketPrice: number
+  regularMarketPreviousClose: number
+  regularMarketChange: number
+  regularMarketChangePercent: number
+}
+
+async function fetchFromYahooFinance(symbol: string): Promise<YahooFinanceResult | null> {
   try {
     // Yahoo Finance v8 API（非公式）を使用
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
@@ -122,30 +131,9 @@ export async function fetchMultipleStockPrices(symbols: string[]): Promise<Price
 }
 
 /**
- * モック価格データ生成（Yahoo Finance API失敗時のフォールバック）
- */
-function generateMockPriceData(symbol: string): StockPrice {
-  const basePrice = symbol.length * 100 + Math.random() * 1000
-  const variation = (Math.random() - 0.5) * 0.1 // ±5%の変動
-  const currentPrice = Math.round(basePrice * (1 + variation))
-  const previousClose = Math.round(currentPrice * (0.95 + Math.random() * 0.1)) // ±5%の変動
-  const change = currentPrice - previousClose
-  const changePercent = (change / previousClose) * 100
-  
-  return {
-    symbol,
-    currentPrice,
-    previousClose,
-    change,
-    changePercent,
-    lastUpdate: new Date()
-  }
-}
-
-/**
  * 前場・後場の判定
  */
-export function getCurrentMarketSession(): 'morning' | 'afternoon' | 'after_hours' {
+export function getCurrentMarketSession(): 'MORNING' | 'AFTERNOON' | 'AFTER_HOURS' {
   const now = new Date()
   const hour = now.getHours()
   const minute = now.getMinutes()
@@ -153,15 +141,15 @@ export function getCurrentMarketSession(): 'morning' | 'afternoon' | 'after_hour
   
   // 前場: 9:00-11:30
   if (timeInMinutes >= 540 && timeInMinutes <= 690) {
-    return 'morning'
+    return 'MORNING'
   }
-  
+
   // 後場: 12:30-15:00
   if (timeInMinutes >= 750 && timeInMinutes <= 900) {
-    return 'afternoon'
+    return 'AFTERNOON'
   }
-  
-  return 'after_hours'
+
+  return 'AFTER_HOURS'
 }
 
 /**

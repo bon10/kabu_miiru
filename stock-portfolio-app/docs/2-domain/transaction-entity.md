@@ -7,7 +7,9 @@
 
 ## エンティティ概要
 
-株式の売買・配当取引の詳細記録を管理するエンティティ。全ての投資活動を時系列で記録し、ポートフォリオ分析の基礎データとなる。
+株式の**売買（BUY / SELL）**取引の詳細記録を管理するエンティティ。売買を時系列で記録し、保有株数・投資額・実現損益の Source of Truth となる（ADR 0003）。
+
+> **配当は本エンティティに含めない。** 受動的に受け取る配当は独立エンティティ `DividendHistory` に記録する（[ADR 0002](../7-adr/0002-dividend-as-separate-entity.md)）。受取配当の金額算出（1株あたり配当金 × 保有株数）は [ADR 0007](../7-adr/0007-dividend-receipt-amount-from-per-share.md) / [BR-202](business-rules.md) を参照。
 
 ## フィールド定義
 
@@ -33,8 +35,9 @@
 
 ### TransactionType（取引種別）
 - `BUY`: 購入取引
-- `SELL`: 売却取引  
-- `DIVIDEND`: 配当受取
+- `SELL`: 売却取引
+
+> `DIVIDEND` は ADR 0002 により本 enum から削除済み（配当は `DividendHistory`）。現行スキーマの `TransactionType` は `BUY` / `SELL` の 2 値。
 
 ## 取引種別詳細
 
@@ -48,17 +51,11 @@
 - **影響**: 保有株数減少、実現損益発生
 - **計算**: totalAmount = shares × pricePerShare - fee
 
-### DIVIDEND（配当受取）
-- **用途**: 配当金の受取記録
-- **影響**: 配当収入の累積
-- **特記**: shares = 受取時保有株数、pricePerShare = 1株配当額
-
 ## ビジネスルール
 
 ### BR-010: 取引整合性
 - **売却制約**: 売却株数 ≤ 売却時点の保有株数
 - **購入制約**: 購入株数 > 0、購入単価 > 0
-- **配当制約**: 配当受取時の保有株数との整合性
 
 ### BR-011: 金額計算
 ```
@@ -69,9 +66,6 @@ investmentAmount += totalAmount
 // 売却時  
 totalAmount = shares × pricePerShare - fee
 realizedProfitLoss = totalAmount - (avgAcquisitionPrice × shares)
-
-// 配当時
-totalAmount = dividendAmount（配当金額）
 ```
 
 ### BR-012: 保有株数更新
@@ -81,9 +75,6 @@ newSharesHeld = currentSharesHeld + shares
 
 // 売却時
 newSharesHeld = currentSharesHeld - shares
-
-// 配当時（保有株数変更なし）
-sharesHeld = currentSharesHeld
 ```
 
 ### BR-013: 平均取得単価更新
@@ -131,7 +122,7 @@ avgAcquisitionPrice = currentAvgPrice
 
 ### VR-002: 数値検証
 - shares > 0
-- pricePerShare > 0（DIVIDENDの場合は >= 0）
+- pricePerShare > 0
 - totalAmount >= 0
 - fee >= 0
 
@@ -170,16 +161,4 @@ avgAcquisitionPrice = currentAvgPrice
 }
 ```
 
-### 配当取引例
-```json
-{
-  "stockId": 1,
-  "transactionType": "DIVIDEND",
-  "shares": 50,
-  "pricePerShare": 25.00, 
-  "totalAmount": 1250,
-  "fee": 0,
-  "transactionDate": "2024-03-31",
-  "memo": "期末配当"
-}
-```
+> 配当受取の記録例は `DividendHistory` 側にあたる（本エンティティでは扱わない）。[ADR 0002](../7-adr/0002-dividend-as-separate-entity.md) / [ADR 0007](../7-adr/0007-dividend-receipt-amount-from-per-share.md) を参照。

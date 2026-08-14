@@ -994,12 +994,18 @@ components:
         dividendAmount:
           type: number
           format: decimal
+          description: >-
+            受取総額（受取通貨建て）。POST 時は 1 株あたり配当金
+            (dividendPerShare) を受け取り、サーバー側で現在の保有株数
+            (Stock.sharesHeld) を掛けて確定・保存する（BR-202）。
         paymentDate:
           type: string
           format: date
         dividendType:
           type: string
-          enum: [期末, 中間, 特別]
+          nullable: true
+          description: 表示専用ラベル。任意（未指定は null）。集計には使わない
+          enum: [期末, 中間, 四半期, 特別, 分配金]
         createdAt:
           type: string
           format: date-time
