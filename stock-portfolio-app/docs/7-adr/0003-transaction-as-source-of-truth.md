@@ -32,17 +32,18 @@ Accepted (2026-06-12)
 ## 決定していないこと
 
 - ~~TSV インポート由来の保有（初期残高）を「初期残高 Transaction」種別で表すか、インポート時に BUY Transaction を生成するかは未決定~~
-  → **[ADR 0007](0007-initial-balance-transaction.md) で決定済み（2026-08-14）**。`TransactionType` は増やさず `Transaction.isInitialBalance` フラグで識別し、集計上は BUY と同一に扱う
+  → **[ADR 0008](0008-initial-balance-transaction.md) で決定済み（2026-08-14）**。`TransactionType` は増やさず `Transaction.isInitialBalance` フラグで識別し、集計上は BUY と同一に扱う
 
 ## 見直しトリガー
 
 - ~~**Transaction を持たない保有が集計の前提を崩していることが確認されたとき**~~
-  → **発火済み（2026-08-14）**。保有 55 銘柄に対し Transaction は 3 件、購入日を持つのは 7 件のみで、48 銘柄が推移グラフに載らないという実害が確認された。[ADR 0007](0007-initial-balance-transaction.md) で初期残高 Transaction を導入し、本決定の不変条件を回復させる
+  → **発火済み（2026-08-14）**。保有 55 銘柄に対し Transaction は 3 件、購入日を持つのは 7 件のみで、48 銘柄が推移グラフに載らないという実害が確認された。[ADR 0008](0008-initial-balance-transaction.md) で初期残高 Transaction を導入し、本決定の不変条件を回復させる
 - Transaction からの再集計コストが、通常画面の表示 UX を損なう規模になったとき
 - **初期残高 Transaction の導入後も、Transaction を持たない保有が新たに発生したとき**（TSV インポート経路の修正漏れ等）
 
 ## 関連
 
 - [ADR 0005 米国株の円換算](0005-us-stock-jpy-conversion.md)（Transaction を持たない保有の実例）
-- [ADR 0007 移行データの保有は初期残高 Transaction で表す](0007-initial-balance-transaction.md)（本 ADR の見直しトリガー発火を受けた決定）
-- [ADR 0008 ポートフォリオ推移は日次終値から再構成](0008-portfolio-timeline-from-daily-close.md)（本 ADR の「読み取り時に再構成する」考え方を時系列へ適用）
+- [ADR 0007 受取配当額は登録時の 1株配当 × 保有株数で確定](0007-dividend-receipt-amount-from-per-share.md)（本 ADR の派生キャッシュ `Stock.sharesHeld` を係数として参照する。ただし受取配当の総額は登録時点で凍結し再計算しない点で、本 ADR の「派生値は再計算」とは方針が分かれる）
+- [ADR 0008 移行データの保有は初期残高 Transaction で表す](0008-initial-balance-transaction.md)（本 ADR の見直しトリガー発火を受けた決定）
+- [ADR 0009 ポートフォリオ推移は日次終値から再構成](0009-portfolio-timeline-from-daily-close.md)（本 ADR の「読み取り時に再構成する」考え方を時系列へ適用）

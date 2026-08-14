@@ -75,6 +75,7 @@ interface StocksResponse {
       stockName: string
       code: string
       market: string
+      sharesHeld: number
     }>
   }
 }
@@ -112,6 +113,7 @@ export default function DividendsClient() {
         stockName: s.stockName,
         code: s.code,
         market: s.market,
+        sharesHeld: s.sharesHeld,
       })),
     [stocksData]
   )

@@ -44,6 +44,15 @@ pnpm lint
 pnpm dlx prettier --write .
 ```
 
+**テスト（Vitest）:**
+```bash
+pnpm test                   # 全テストを1回実行
+pnpm test:watch             # 変更監視でループ実行（TDD用）
+```
+- 純粋ロジックは `src/lib` に抽出して単体テストする（例: `src/lib/dividend.ts` ↔ `src/lib/dividend.test.ts`）
+- 設定は `vitest.config.mts`（node 環境・`@/` エイリアス）
+- TDD の進め方は `.claude/skills/tdd` を参照
+
 ## アーキテクチャ
 
 ### 技術スタック
@@ -72,7 +81,7 @@ pnpm dlx prettier --write .
   - 基本情報、保有情報、投資情報、配当情報、価格更新情報
 - **Transaction**: 売買・配当取引履歴
 - **PriceHistory**: 価格履歴（市場セッション対応、場中の値を含む）
-- **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0008）
+- **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）
 - **ExchangeRate**: USD/JPY の日次レート（`rateDate` ユニーク、ADR 0005 / 0008）
 - **DividendHistory**: 配当履歴
 - **PortfolioSummary**: ポートフォリオサマリー（キャッシュ用）
@@ -95,12 +104,12 @@ pnpm dlx prettier --write .
 #### ポートフォリオ分析 (`/api/portfolio`)
 - `GET /api/portfolio/composition` - ポートフォリオ構成分析（株式・企業・市場別）
 - `GET /api/portfolio/performance` - パフォーマンス指標
-- `GET /api/portfolio/timeline` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0008）
+- `GET /api/portfolio/timeline` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0009）
 
 #### バッチ (`/api/batch`) — `X-API-Key` 必須
 - `POST /api/batch/price-update` - 現在価格の一括更新
 - `POST /api/batch/daily-close` - 日次終値と日次 USD/JPY の取り込み（`{"range":"1mo"}`。既存は上書きせず再実行可）
-- `POST /api/batch/initial-balance` - 初期残高 Transaction の生成（ADR 0007。既定は dry-run、`{"apply":true}` で実行）
+- `POST /api/batch/initial-balance` - 初期残高 Transaction の生成（ADR 0008。既定は dry-run、`{"apply":true}` で実行）
 
 #### 取引管理 (`/api/transactions`)
 - `GET /api/transactions` - 取引履歴（ページング・フィルタ対応）

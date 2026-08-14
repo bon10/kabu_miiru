@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { buildPortfolioTimeline } from '@/lib/portfolio-timeline'
 
-// ポートフォリオ推移 API（ADR 0008）。
+// ポートフォリオ推移 API（ADR 0009）。
 //
 // 日次で次の値を返す。いずれも保存値ではなく、取引履歴・日次終値・日次レートから
 // 読み取り時に再構成した派生値：
@@ -12,7 +12,7 @@ import { buildPortfolioTimeline } from '@/lib/portfolio-timeline'
 //   - cumulativeRealizedPL: その日までの累計実現損益
 //   - cumulativeDividends: その日までの累計配当受取（カレンダー年の集計は ADR 0004）
 //
-// 起点日（ADR 0007）より前は保有が不明なため返さない。
+// 起点日（ADR 0008）より前は保有が不明なため返さない。
 export async function GET(request: NextRequest) {
   try {
     const monthsParam = request.nextUrl.searchParams.get('months')

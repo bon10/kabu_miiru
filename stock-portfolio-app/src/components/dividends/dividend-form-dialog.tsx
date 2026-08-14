@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -19,12 +19,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { formatMoney } from '@/lib/utils'
+import { calcDividendReceipt, DIVIDEND_CALC_MESSAGES } from '@/lib/dividend'
 
 export interface DividendStockOption {
   id: number
   stockName: string
   code: string
   market: string
+  // 現在の保有株数（Transaction 由来の派生キャッシュ：ADR 0003）。
+  // 入力された 1 株あたり配当金にこの株数を掛けて受取総額を求める。
+  sharesHeld: number
 }
 
 // 配当種別は表示専用ラベルで集計には使わない。証券会社が期を示さず判別できないこともあるため未指定を許す。
@@ -56,7 +61,9 @@ export function DividendFormDialog({
   const [stockId, setStockId] = useState<string>(
     defaultStockId ? String(defaultStockId) : ''
   )
-  const [dividendAmount, setDividendAmount] = useState('')
+  // 証券会社から通知される「1 株あたり配当金」をそのまま入力する。
+  // 受取総額は保存時に保有株数を掛けて算出するため、ここでは総額を入力しない。
+  const [dividendPerShare, setDividendPerShare] = useState('')
   const [currency, setCurrency] = useState<Currency>('JPY')
   // 通貨をユーザーが手動で選び直したか。選び直した後に銘柄を変えても勝手に上書きしない。
   const [currencyTouched, setCurrencyTouched] = useState(false)
@@ -82,7 +89,7 @@ export function DividendFormDialog({
     if (open) {
       const initialStockId = defaultStockIdRef.current
       setStockId(initialStockId ? String(initialStockId) : '')
-      setDividendAmount('')
+      setDividendPerShare('')
       const initialMarket = stocksRef.current.find(
         (s) => s.id === initialStockId
       )?.market
@@ -93,6 +100,17 @@ export function DividendFormDialog({
       setError(null)
     }
   }, [open])
+
+  // 選択中の銘柄と、その現在保有株数・想定受取総額（1 株配当 × 保有株数）を導出する。
+  const selectedStock = useMemo(
+    () => stocks.find((s) => String(s.id) === stockId),
+    [stocks, stockId]
+  )
+  const sharesHeld = selectedStock?.sharesHeld ?? 0
+  const perShareValue = Number(dividendPerShare)
+  // 想定受取額の計算・検証はサーバーと同じ calcDividendReceipt に委ねる（計算の二重化を避ける）。
+  // 実際の保存額はサーバー側の最新保有株数で確定するため、ここでの値は「想定」。
+  const calc = calcDividendReceipt(perShareValue, sharesHeld)
 
   // 銘柄を選ぶと受取通貨の初期値をその市場に合わせる。
   // ただしユーザーが通貨を明示的に変更済みなら尊重して上書きしない。
@@ -112,9 +130,8 @@ export function DividendFormDialog({
       setError('銘柄を選択してください')
       return
     }
-    const amount = Number(dividendAmount)
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError('配当金額は 0 より大きい値を指定してください')
+    if (!calc.ok) {
+      setError(DIVIDEND_CALC_MESSAGES[calc.error])
       return
     }
 
@@ -125,7 +142,8 @@ export function DividendFormDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           stockId: Number(stockId),
-          dividendAmount: amount,
+          // 1 株あたり配当金のみ送り、受取総額はサーバー側で保有株数を掛けて確定する。
+          dividendPerShare: perShareValue,
           currency,
           paymentDate,
           // 未指定センチネルは送らず null にして、サーバー側で種別なし（NULL）として保存させる。
@@ -155,7 +173,7 @@ export function DividendFormDialog({
           <DialogHeader>
             <DialogTitle>受取配当を追加</DialogTitle>
             <DialogDescription>
-              実際に受け取った配当金を記録します（銘柄マスタの予想配当とは別物）。
+              1株あたりの配当金を入力すると、保有株数を掛けた受取総額を記録します（銘柄マスタの予想配当とは別物）。
             </DialogDescription>
           </DialogHeader>
 
@@ -195,14 +213,14 @@ export function DividendFormDialog({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">配当金額</label>
+                <label className="text-sm font-medium">1株あたり配当金</label>
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step={currency === 'USD' ? '0.01' : '1'}
+                  step="0.01"
                   min="0"
-                  value={dividendAmount}
-                  onChange={(e) => setDividendAmount(e.target.value)}
+                  value={dividendPerShare}
+                  onChange={(e) => setDividendPerShare(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
@@ -214,6 +232,23 @@ export function DividendFormDialog({
                 />
               </div>
             </div>
+
+            {stockId && (
+              <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">
+                  保有株数:{' '}
+                  <span className="font-medium text-foreground">
+                    {sharesHeld.toLocaleString()} 株
+                  </span>
+                </span>
+                <span className="text-muted-foreground">
+                  想定受取額:{' '}
+                  <span className="font-semibold text-blue-600">
+                    {calc.ok ? formatMoney(calc.total, currency) : '—'}
+                  </span>
+                </span>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">配当種別（任意）</label>

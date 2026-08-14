@@ -93,7 +93,7 @@ export interface RateBackfillSummary {
   error?: string
 }
 
-// 過去の USD/JPY レートをまとめて取り込む（ADR 0008）。
+// 過去の USD/JPY レートをまとめて取り込む（ADR 0009）。
 //
 // getCurrentUsdJpyRate は当日 1 件しか取りに行かないため、アプリを起動していなかった
 // 期間のレートが欠ける。ポートフォリオ推移では過去日の評価額を「その日のレート」で

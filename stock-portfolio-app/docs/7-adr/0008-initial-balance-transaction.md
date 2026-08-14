@@ -1,4 +1,4 @@
-# ADR 0007: 移行データの保有は「初期残高 Transaction」で表す
+# ADR 0008: 移行データの保有は「初期残高 Transaction」で表す
 
 ## Status
 
@@ -20,7 +20,7 @@ Accepted (2026-08-14)
 これにより ADR 0003 の見直しトリガー「Transaction を持たない保有が集計の前提を崩していることが確認されたとき」が発火した。実害は次の 2 点：
 
 - ポートフォリオ推移 API が `Transaction` のみから再生するため、**48 銘柄が推移グラフに一切載らない**
-- 任意の過去時点の保有株数を引けないため、評価額の推移（[ADR 0008](0008-portfolio-timeline-from-daily-close.md)）が計算できない
+- 任意の過去時点の保有株数を引けないため、評価額の推移（[ADR 0009](0009-portfolio-timeline-from-daily-close.md)）が計算できない
 
 ## 検討した代替案
 
@@ -56,7 +56,7 @@ Accepted (2026-08-14)
 
 ## 決定していないこと
 
-- **起点日より前の期間をグラフでどう見せるか**（非表示 / 破線 / 注記）は ADR 0008 側の未決事項として扱う
+- **起点日より前の期間をグラフでどう見せるか**（非表示 / 破線 / 注記）は ADR 0009 側の未決事項として扱う
 - **48 銘柄の購入日を今後埋めていく運用にするか**。埋めなくても動作するため、必要が生じてから決める
 - **初期残高 Transaction をユーザーが UI から編集できるようにするか**。現状の編集は `allowTransactionEdit` 設定（既定オフ）の配下にある
 - **`isInitialBalance` を集計ロジックで参照するか**。現時点では出自の記録のみに使い、計算は一切分岐させない
@@ -67,7 +67,7 @@ Accepted (2026-08-14)
 - **移行**：既存 55 保有に対し初期残高 Transaction を生成するスクリプトが必要。実行後に全銘柄で `recalculateStockAggregates` を回し、`sharesHeld`・`avgAcquisitionPrice` が移行前の値と一致することを検証する（一致しなければ移行が誤っている）
 - **TSV インポート**：今後のインポートも `Stock` 直書きではなく初期残高 Transaction を生成する経路に変える。ここを直さないと同じ乖離が再発する
 - **既知の不具合を先に塞ぐ必要がある**：[recalculateStockAggregates](../../src/lib/stock-aggregation.ts) は `if (shares <= 0) continue` により、保有ゼロ時点の SELL を**警告なく読み飛ばす**。起点日を既存の SELL より後ろにずらすと、その売却の実現損益が黙って消える。`validateSellTransaction` は現在の合計株数しか見ておらず日付順序を検証しないため、日付編集を許すなら順序バリデーションを追加する
-- **推移グラフ**：48 銘柄が推移の対象に入り、ADR 0008 の評価額推移が計算可能になる
+- **推移グラフ**：48 銘柄が推移の対象に入り、ADR 0009 の評価額推移が計算可能になる
 
 ### プレモーテム（この決定が誤っていた場合）
 
@@ -85,6 +85,6 @@ Accepted (2026-08-14)
 ## 関連
 
 - [ADR 0003 保有株数・投資額は Transaction を Source of Truth](0003-transaction-as-source-of-truth.md)（本 ADR は 0003 の見直しトリガー発火を受けた決定）
-- [ADR 0008 ポートフォリオ推移は日次終値から再構成する](0008-portfolio-timeline-from-daily-close.md)（本 ADR を前提とする）
+- [ADR 0009 ポートフォリオ推移は日次終値から再構成する](0009-portfolio-timeline-from-daily-close.md)（本 ADR を前提とする）
 - [ADR 0005 米国株は当日レートで円換算](0005-us-stock-jpy-conversion.md)（初期残高の単価をドル建てで保存する根拠）
 - [ユビキタス言語：初期残高・起点日](../2-domain/ubiquitous-language.md#移行初期残高関連)

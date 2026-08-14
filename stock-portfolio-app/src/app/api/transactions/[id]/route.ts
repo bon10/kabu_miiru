@@ -159,7 +159,7 @@ export async function PUT(
     // 取引そのものは stock を付け替えない（銘柄変更は非対応）。
     // 更新後、その銘柄の集計値（保有株数・取得単価・損益）を取引履歴から再計算する。
     // 取引日を SELL より後ろにずらすと保有ゼロ時点の SELL が生まれ実現損益が消えるため、
-    // その場合は更新ごとロールバックする（ADR 0007）。
+    // その場合は更新ごとロールバックする（ADR 0008）。
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.transaction.update({
         where: { id: transactionId },

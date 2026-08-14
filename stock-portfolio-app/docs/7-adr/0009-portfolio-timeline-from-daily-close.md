@@ -1,4 +1,4 @@
-# ADR 0008: ポートフォリオ推移は日次終値から読み取り時に再構成する
+# ADR 0009: ポートフォリオ推移は日次終値から読み取り時に再構成する
 
 ## Status
 
@@ -23,7 +23,7 @@ Accepted (2026-08-14)
 
 加えて `PriceHistory.recordedAt` は任意時刻であり、場中に取得した値と終値が混在している。日次の時系列としては使えない。
 
-なお、任意時点の保有株数を引ける前提は [ADR 0007](0007-initial-balance-transaction.md) が担う。
+なお、任意時点の保有株数を引ける前提は [ADR 0008](0008-initial-balance-transaction.md) が担う。
 
 ## 検討した代替案
 
@@ -60,7 +60,7 @@ Yahoo Finance の chart API は `?range=…&interval=1d` で期間分の日次�
 
 ### 起点日より前は描かない
 
-初期残高の起点日（ADR 0007、購入日不明の銘柄は 2025-09-10）より前は保有状況が不明なため、グラフの対象外とする。ゼロで描くと起点日に資産が突然発生したグラフになり、実態を誤って伝える。
+初期残高の起点日（ADR 0008、購入日不明の銘柄は 2025-09-10）より前は保有状況が不明なため、グラフの対象外とする。ゼロで描くと起点日に資産が突然発生したグラフになり、実態を誤って伝える。
 
 ## 決定していないこと
 
@@ -82,7 +82,7 @@ Yahoo Finance の chart API は `?range=…&interval=1d` で期間分の日次�
 - [getCurrentUsdJpyRate](../../src/lib/exchange-rate.ts) は「当日 1 件を取りに行く」実装であり、過去日を範囲で取り込む経路を追加する
 - [/api/portfolio/timeline](../../src/app/api/portfolio/timeline/route.ts) は返す指標が変わる（投資額・実現損益・配当 → 評価額・投資元本・評価損益ほか）。粒度も月末固定から日次ベースに変わり、[portfolio-timeline-chart](../../src/components/portfolio/portfolio-timeline-chart.tsx) も追随する
 - [fetchMultipleStockPrices](../../src/lib/stock-price.ts) は 55 銘柄を**直列**で回している。バックフィルもこの経路を使うため、画面リクエストからではなくバッチ経路で実行する前提とする
-- ADR 0007 の初期残高 Transaction が前提。これが無いと 48 銘柄の過去株数を引けず、評価額が算出できない
+- ADR 0008 の初期残高 Transaction が前提。これが無いと 48 銘柄の過去株数を引けず、評価額が算出できない
 - 取得失敗が続くと forward-fill が長く伸び、実勢とずれる。欠測が何日続いたかを記録し、UI で判別できるようにする
 
 ### プレモーテム（この決定が誤っていた場合）
@@ -101,7 +101,7 @@ Yahoo Finance の chart API は `?range=…&interval=1d` で期間分の日次�
 
 ## 関連
 
-- [ADR 0007 移行データの保有は初期残高 Transaction で表す](0007-initial-balance-transaction.md)（本 ADR の前提）
+- [ADR 0008 移行データの保有は初期残高 Transaction で表す](0008-initial-balance-transaction.md)（本 ADR の前提）
 - [ADR 0003 保有株数・投資額は Transaction を Source of Truth](0003-transaction-as-source-of-truth.md)（読み取り時に再構成する考え方の土台）
 - [ADR 0005 米国株は当日レートで円換算](0005-us-stock-jpy-conversion.md)（円換算原則を各過去日へ拡張した）
 - [外部 API 連携仕様：日次終値の取得](../external-apis.md#日次終値の取得range--interval)

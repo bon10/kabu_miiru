@@ -3,7 +3,7 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { backfillDailyPrices } from '@/lib/daily-price'
 import { backfillUsdJpyRates } from '@/lib/exchange-rate'
 
-// 日次終値・日次 USD/JPY レートの取り込みバッチ（ADR 0008）。
+// 日次終値・日次 USD/JPY レートの取り込みバッチ（ADR 0009）。
 //
 // range で指定した期間ぶんが 1 銘柄 1 リクエストで返るため、アプリを起動して
 // いなかった期間もまとめて埋められる。日次更新も初回バックフィルも同じ経路で、

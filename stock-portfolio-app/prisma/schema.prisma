@@ -87,7 +87,7 @@ model PriceHistory {
   @@index([stockId, recordedAt])
 }
 
-// 日次終値（ポートフォリオ推移の原資料 / ADR 0008）
+// 日次終値（ポートフォリオ推移の原資料 / ADR 0009）
 // 「その営業日の終値」を 1 銘柄 1 日 1 レコードで保存する。場中の値が混ざる
 // PriceHistory とは別テーブルにして、日単位のユニーク制約を掛けている。
 // 価格は建値通貨のまま（米国株は USD）。円換算は読み取り時に ExchangeRate で行う。
@@ -118,7 +118,7 @@ model Transaction {
   totalAmount     Decimal         @db.Decimal(15,2)
   fee             Decimal         @default(0) @db.Decimal(15,2)
   transactionDate DateTime
-  // 移行データ由来の保有を表す取引かどうか（ADR 0007）。
+  // 移行データ由来の保有を表す取引かどうか（ADR 0008）。
   // 種別は BUY のままで集計上も通常の購入と同一に扱い、このフラグが示すのは
   // 「取引日が実データではなく推定値である」ことだけ。
   isInitialBalance Boolean        @default(false)

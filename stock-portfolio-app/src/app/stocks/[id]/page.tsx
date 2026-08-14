@@ -113,6 +113,7 @@ export default function StockDetailPage() {
               stockName: stock.stockName,
               code: stock.code,
               market: stock.market,
+              sharesHeld: stock.sharesHeld,
             },
           ]
         : [],

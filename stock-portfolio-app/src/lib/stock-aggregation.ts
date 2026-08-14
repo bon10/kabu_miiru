@@ -7,7 +7,7 @@ type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma
 // 保有株数ゼロの時点に置かれてしまった SELL。
 // 取引日を編集して BUY より前に来た場合や、先行する BUY を削除した場合に発生する。
 // 平均取得単価法では取得原価が無く損益を計算できないため集計から除外されるが、
-// 黙って除外すると実現損益が警告なく消える。呼び出し側で弾けるよう返す（ADR 0007）。
+// 黙って除外すると実現損益が警告なく消える。呼び出し側で弾けるよう返す（ADR 0008）。
 export interface OrphanedSell {
   transactionId: number
   transactionDate: Date

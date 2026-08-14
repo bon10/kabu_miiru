@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { createInitialBalances, findUnbackedSells } from '@/lib/initial-balance'
 
-// 初期残高 Transaction の生成バッチ（ADR 0007）。
+// 初期残高 Transaction の生成バッチ（ADR 0008）。
 //
 // TSV インポート由来の保有に「起点日にこの株数を保有していた」取引を 1 件ずつ作る。
 // 一度きりの移行作業だが、何度実行しても結果が変わらないため再実行しても安全。

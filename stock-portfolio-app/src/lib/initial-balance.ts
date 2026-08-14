@@ -2,16 +2,16 @@ import { prisma } from '@/lib/prisma'
 import { recalculateStockAggregates } from '@/lib/stock-aggregation'
 import { formatDateKey } from '@/lib/daily-price'
 
-// 初期残高 Transaction の生成（ADR 0007）。
+// 初期残高 Transaction の生成（ADR 0008）。
 //
 // TSV 一括インポート由来の保有は Stock に直接書かれており Transaction を持たない。
-// この状態では任意時点の保有株数を再生できず、ポートフォリオ推移（ADR 0008）を
+// この状態では任意時点の保有株数を再生できず、ポートフォリオ推移（ADR 0009）を
 // 計算できないため、「起点日にこの株数を保有していた」という 1 件の BUY を作る。
 //
 // 生成する取引は isInitialBalance = true を立てるだけで、種別も集計上の扱いも
 // 通常の BUY と同一。フラグが示すのは「取引日が実データではなく推定値」であること。
 
-// 購入日を持たない銘柄に与える起点日（ADR 0007）。
+// 購入日を持たない銘柄に与える起点日（ADR 0008）。
 // 全銘柄の Stock.createdAt が示す TSV 一括取り込み日。この日にその株数を保有して
 // いたことは事実であり、それ以前は不明なため推定で遡らせない。
 export const DEFAULT_BASELINE_DATE = new Date(2025, 8, 10) // 2025-09-10
@@ -111,7 +111,7 @@ export async function createInitialBalances(apply: boolean): Promise<InitialBala
     let baselineDate = stock.purchaseDate ?? DEFAULT_BASELINE_DATE
 
     // 初期残高は既存のどの取引よりも前に置く。後ろに来ると、先行する SELL が
-    // 保有ゼロの時点に取り残されて実現損益が計算できなくなる（ADR 0007）。
+    // 保有ゼロの時点に取り残されて実現損益が計算できなくなる（ADR 0008）。
     const earliestTx = stock.transactions[0]?.transactionDate
     if (earliestTx && baselineDate >= earliestTx) {
       baselineDate = new Date(earliestTx.getTime() - 24 * 60 * 60 * 1000)

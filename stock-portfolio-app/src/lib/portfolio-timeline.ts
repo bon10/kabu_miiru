@@ -3,7 +3,7 @@ import { toDateKey, formatDateKey } from '@/lib/daily-price'
 import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
 
-// ポートフォリオ推移の再構成（ADR 0008）。
+// ポートフォリオ推移の再構成（ADR 0009）。
 //
 // 評価額・投資元本は保存せず、原資料（取引履歴・日次終値・日次レート）から
 // 読み取り時に組み立てる。過去の取引や初期残高の起点日を直せば、過去のグラフも
@@ -99,7 +99,7 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
   const stockById = new Map<number, StockMeta>(stocks.map((s) => [s.id, s]))
   const today = toDateKey(new Date())
 
-  // 起点日 = 最も古い取引日。初期残高 Transaction がここに置かれる（ADR 0007）。
+  // 起点日 = 最も古い取引日。初期残高 Transaction がここに置かれる（ADR 0008）。
   // これより前は保有が不明なため描画対象にしない。
   const baselineDate = toDateKey(transactions[0].transactionDate)
   // 「直近 N ヶ月」は暦月で遡る（30 日換算だと 12 ヶ月が 360 日になり 1 年に足りない）
