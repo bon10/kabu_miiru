@@ -82,22 +82,50 @@ class ForwardFill {
   }
 }
 
-// 指定期間のポートフォリオ推移を組み立てる。
-//
-// months に null を渡すと起点日から今日までの全期間を返す。
-export async function buildPortfolioTimeline(months: number | null): Promise<TimelineResult> {
-  const [transactions, dividends, stocks] = await Promise.all([
-    prisma.transaction.findMany({ orderBy: { transactionDate: 'asc' } }),
-    prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
-    prisma.stock.findMany({ select: { id: true, code: true, stockName: true, market: true } }),
-  ])
+// 純粋関数の入力。DB から読んだ値を number / Date に落として渡す。
+export interface TimelineInput {
+  transactions: Array<{
+    stockId: number
+    transactionType: 'BUY' | 'SELL'
+    shares: number
+    pricePerShare: number
+    fee: number
+    transactionDate: Date
+  }>
+  dividends: Array<{ paymentDate: Date; dividendAmount: number; currency: string }>
+  stocks: StockMeta[]
+  // 銘柄 ID → 暦日(getTime) → 終値（建値通貨）
+  closeMap: Map<number, Map<number, number>>
+  // 暦日(getTime) → USD/JPY
+  rateMap: Map<number, number>
+  today: Date
+  months: number | null
+}
+
+// 起点日そのものが休場日（土日祝）だと、その日の終値が無く forward-fill の
+// 引き継ぎ元も無いため評価額を出せない。起点日より前から助走させて直前営業日の
+// 終値を拾えるようにする。年末年始・大型連休を跨いでも足りる長さを取る。
+const WARMUP_DAYS = 14
+
+export function warmupStartOf(baselineDate: Date): Date {
+  return new Date(
+    baselineDate.getFullYear(),
+    baselineDate.getMonth(),
+    baselineDate.getDate() - WARMUP_DAYS,
+  )
+}
+
+// 推移を組み立てる純粋関数。DB に触れないため単体テストで振る舞いを固定できる。
+// 取引・配当は日付の昇順に並んでいることを前提とする。
+export function computeTimeline(inputData: TimelineInput): TimelineResult {
+  const { transactions, dividends, stocks, closeMap, rateMap, months } = inputData
+  const today = toDateKey(inputData.today)
 
   if (transactions.length === 0) {
     return { points: [], baselineDate: null, missingPriceStocks: [] }
   }
 
   const stockById = new Map<number, StockMeta>(stocks.map((s) => [s.id, s]))
-  const today = toDateKey(new Date())
 
   // 起点日 = 最も古い取引日。初期残高 Transaction がここに置かれる（ADR 0008）。
   // これより前は保有が不明なため描画対象にしない。
@@ -108,20 +136,7 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
     ? new Date(Math.max(baselineDate.getTime(), monthsAgo.getTime()))
     : baselineDate
 
-  // 起点日そのものが休場日（土日祝）だと、その日の終値が無く forward-fill の
-  // 引き継ぎ元も無いため評価額を出せない。起点日より前から助走させて直前営業日の
-  // 終値を拾えるようにする。年末年始・大型連休を跨いでも足りる長さを取る。
-  const WARMUP_DAYS = 14
-  const warmupStart = new Date(
-    baselineDate.getFullYear(),
-    baselineDate.getMonth(),
-    baselineDate.getDate() - WARMUP_DAYS,
-  )
-
-  const [closeMap, rateMap] = await Promise.all([
-    loadCloseMap(warmupStart),
-    getUsdJpyRateMap(warmupStart),
-  ])
+  const warmupStart = warmupStartOf(baselineDate)
 
   // 日次終値も日次レートも、その日のレコードが無ければ直前の値を引き継ぐ。
   // 銘柄ごとに独立した状態を持つ（日米で営業日が異なるため）。
@@ -156,9 +171,7 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
     // その日までの取引を保有状態へ反映する（平均取得単価法）
     while (txIndex < transactions.length && toDateKey(transactions[txIndex].transactionDate) <= day) {
       const tx = transactions[txIndex++]
-      const shares = Number(tx.shares)
-      const price = Number(tx.pricePerShare)
-      const fee = Number(tx.fee)
+      const { shares, pricePerShare: price, fee } = tx
       const held = heldShares.get(tx.stockId) ?? 0
       const cost = costBasis.get(tx.stockId) ?? 0
       const isUs = isUsStock(stockById.get(tx.stockId)?.market ?? '')
@@ -188,7 +201,7 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
     // その日までの受取配当を積む。受取通貨で判定して円換算する（ADR 0006）
     while (divIndex < dividends.length && toDateKey(dividends[divIndex].paymentDate) <= day) {
       const d = dividends[divIndex++]
-      const amount = Number(d.dividendAmount)
+      const amount = d.dividendAmount
       dividendsJpy += d.currency === 'USD' && rate !== null ? amount * rate : amount
     }
 
@@ -251,4 +264,46 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
       stockName: stockById.get(id)?.stockName ?? '',
     })),
   }
+}
+
+// DB から原資料を読み、computeTimeline に渡すだけのラッパー。
+// 計算は computeTimeline 側に集約してあるので、ここには読み出しの都合だけを置く。
+export async function buildPortfolioTimeline(months: number | null): Promise<TimelineResult> {
+  const [transactions, dividends, stocks] = await Promise.all([
+    prisma.transaction.findMany({ orderBy: { transactionDate: 'asc' } }),
+    prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
+    prisma.stock.findMany({ select: { id: true, code: true, stockName: true, market: true } }),
+  ])
+
+  if (transactions.length === 0) {
+    return { points: [], baselineDate: null, missingPriceStocks: [] }
+  }
+
+  // 終値・レートは起点日の助走期間ぶんまで遡って読む（起点日が休場日でも評価できるように）
+  const warmupStart = warmupStartOf(toDateKey(transactions[0].transactionDate))
+  const [closeMap, rateMap] = await Promise.all([
+    loadCloseMap(warmupStart),
+    getUsdJpyRateMap(warmupStart),
+  ])
+
+  return computeTimeline({
+    transactions: transactions.map((tx) => ({
+      stockId: tx.stockId,
+      transactionType: tx.transactionType,
+      shares: Number(tx.shares),
+      pricePerShare: Number(tx.pricePerShare),
+      fee: Number(tx.fee),
+      transactionDate: tx.transactionDate,
+    })),
+    dividends: dividends.map((d) => ({
+      paymentDate: d.paymentDate,
+      dividendAmount: Number(d.dividendAmount),
+      currency: d.currency,
+    })),
+    stocks,
+    closeMap,
+    rateMap,
+    today: new Date(),
+    months,
+  })
 }

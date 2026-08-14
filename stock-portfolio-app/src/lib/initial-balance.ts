@@ -48,7 +48,7 @@ export interface InitialBalanceSummary {
 
 // 既存の Transaction が説明できている保有株数を返す（平均取得単価法の株数部分のみ）。
 // stock-aggregation.ts の再計算と同じ順序・同じ打ち切り規則で数える。
-function replayShares(
+export function replayShares(
   transactions: Array<{ transactionType: string; shares: unknown }>,
 ): number {
   let shares = 0
@@ -62,6 +62,65 @@ function replayShares(
     }
   }
   return shares
+}
+
+// 1 銘柄について「初期残高を作るか、作るなら何株をいつの日付で作るか」を決める純粋関数。
+// DB に触れないため、起点日の決め方と対象外の判定を単体テストで固定できる。
+export interface InitialBalanceCandidate {
+  id: number
+  code: string
+  stockName: string
+  sharesHeld: number
+  avgAcquisitionPrice: number
+  purchaseDate: Date | null
+  transactions: Array<{ transactionType: string; shares: number; transactionDate: Date }>
+}
+
+export type InitialBalancePlan =
+  | {
+      kind: 'create'
+      shares: number
+      pricePerShare: number
+      baselineDate: Date
+      fromPurchaseDate: boolean
+    }
+  | { kind: 'skip'; reason: string }
+
+export function planInitialBalance(stock: InitialBalanceCandidate): InitialBalancePlan {
+  const explainedShares = replayShares(stock.transactions)
+  const gap = stock.sharesHeld - explainedShares
+
+  if (gap <= SHARES_EPSILON) {
+    return { kind: 'skip', reason: '保有株数は既存の取引履歴で説明できているため初期残高は不要' }
+  }
+
+  // 取得単価が無いと取得原価を決められない。0 で作ると「全額が利益」という
+  // 誤った実現損益を生むため、推定せず対象外にして手当てを促す。
+  if (!(stock.avgAcquisitionPrice > 0)) {
+    return {
+      kind: 'skip',
+      reason: `平均取得単価が未設定（${stock.avgAcquisitionPrice}）のため取得原価を決められない。手動での補正が必要`,
+    }
+  }
+
+  // 起点日。購入日があればそれが実データ。無ければ TSV 取り込み日で推定する。
+  const fromPurchaseDate = stock.purchaseDate !== null
+  let baselineDate = stock.purchaseDate ?? DEFAULT_BASELINE_DATE
+
+  // 初期残高は既存のどの取引よりも前に置く。後ろに来ると、先行する SELL が
+  // 保有ゼロの時点に取り残されて実現損益が計算できなくなる（ADR 0008）。
+  const earliestTx = stock.transactions[0]?.transactionDate
+  if (earliestTx && baselineDate >= earliestTx) {
+    baselineDate = new Date(earliestTx.getTime() - 24 * 60 * 60 * 1000)
+  }
+
+  return {
+    kind: 'create',
+    shares: gap,
+    pricePerShare: stock.avgAcquisitionPrice,
+    baselineDate,
+    fromPurchaseDate,
+  }
 }
 
 // 保有中の全銘柄に初期残高 Transaction を生成する。
@@ -81,48 +140,37 @@ export async function createInitialBalances(apply: boolean): Promise<InitialBala
   for (const stock of stocks) {
     const sharesHeld = Number(stock.sharesHeld)
     const avgPrice = Number(stock.avgAcquisitionPrice)
-    const explainedShares = replayShares(stock.transactions)
-    const gap = sharesHeld - explainedShares
+    const plan = planInitialBalance({
+      id: stock.id,
+      code: stock.code,
+      stockName: stock.stockName,
+      sharesHeld,
+      avgAcquisitionPrice: avgPrice,
+      purchaseDate: stock.purchaseDate,
+      transactions: stock.transactions.map((tx) => ({
+        transactionType: tx.transactionType,
+        shares: Number(tx.shares),
+        transactionDate: tx.transactionDate,
+      })),
+    })
 
-    if (gap <= SHARES_EPSILON) {
+    if (plan.kind === 'skip') {
       skipped.push({
         stockId: stock.id,
         code: stock.code,
         stockName: stock.stockName,
-        reason: '保有株数は既存の取引履歴で説明できているため初期残高は不要',
+        reason: plan.reason,
       })
       continue
     }
 
-    // 取得単価が無いと取得原価を決められない。0 で作ると「全額が利益」という
-    // 誤った実現損益を生むため、推定せず対象外にして手当てを促す。
-    if (!(avgPrice > 0)) {
-      skipped.push({
-        stockId: stock.id,
-        code: stock.code,
-        stockName: stock.stockName,
-        reason: `平均取得単価が未設定（${avgPrice}）のため取得原価を決められない。手動での補正が必要`,
-      })
-      continue
-    }
-
-    // 起点日。購入日があればそれが実データ。無ければ TSV 取り込み日で推定する。
-    const fromPurchaseDate = stock.purchaseDate !== null
-    let baselineDate = stock.purchaseDate ?? DEFAULT_BASELINE_DATE
-
-    // 初期残高は既存のどの取引よりも前に置く。後ろに来ると、先行する SELL が
-    // 保有ゼロの時点に取り残されて実現損益が計算できなくなる（ADR 0008）。
-    const earliestTx = stock.transactions[0]?.transactionDate
-    if (earliestTx && baselineDate >= earliestTx) {
-      baselineDate = new Date(earliestTx.getTime() - 24 * 60 * 60 * 1000)
-    }
-
+    const { shares: gap, pricePerShare, baselineDate, fromPurchaseDate } = plan
     const entry: InitialBalanceCreated = {
       stockId: stock.id,
       code: stock.code,
       stockName: stock.stockName,
       shares: gap,
-      pricePerShare: avgPrice,
+      pricePerShare,
       baselineDate: formatDateKey(baselineDate),
       fromPurchaseDate,
     }
@@ -138,8 +186,8 @@ export async function createInitialBalances(apply: boolean): Promise<InitialBala
           stockId: stock.id,
           transactionType: 'BUY',
           shares: gap,
-          pricePerShare: avgPrice,
-          totalAmount: gap * avgPrice,
+          pricePerShare,
+          totalAmount: gap * pricePerShare,
           fee: 0,
           transactionDate: baselineDate,
           isInitialBalance: true,

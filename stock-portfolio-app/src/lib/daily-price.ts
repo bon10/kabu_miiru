@@ -58,6 +58,35 @@ export function formatDateKey(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+// Yahoo Finance chart API のレスポンスから日次終値を取り出す純粋関数。
+// ネットワークを伴わないため、配列の対応付けと欠損の扱いを単体テストで固定できる。
+export function parseDailyCloses(
+  data: YahooChartResponse,
+): { ok: true; closes: DailyClose[] } | { ok: false; error: string } {
+  const result = data.chart?.result?.[0]
+  const timestamps = result?.timestamp
+  const closes = result?.indicators?.quote?.[0]?.close
+
+  if (!timestamps || !closes) {
+    return { ok: false, error: 'レスポンス形式が不正です' }
+  }
+
+  // timestamp と close は同じ長さの配列で対応する。休場明けなどで close が
+  // null になる要素があるため、null は捨てる（後段で前営業日の値で埋める）。
+  const parsed: DailyClose[] = []
+  for (let i = 0; i < timestamps.length; i++) {
+    const close = closes[i]
+    if (close === null || close === undefined || !Number.isFinite(close)) continue
+    parsed.push({ priceDate: toPriceDate(timestamps[i]), close })
+  }
+
+  if (parsed.length === 0) {
+    return { ok: false, error: '有効な終値がありませんでした' }
+  }
+
+  return { ok: true, closes: parsed }
+}
+
 // Yahoo Finance chart API から日次終値をまとめて取得する。
 //
 // range で指定した期間分が 1 リクエストで返るため、アプリを止めていた期間も
@@ -87,29 +116,11 @@ export async function fetchDailyCloseSeries(
       return { symbol, success: false, closes: [], error: `HTTP ${response.status}` }
     }
 
-    const data = (await response.json()) as YahooChartResponse
-    const result = data.chart?.result?.[0]
-    const timestamps = result?.timestamp
-    const closes = result?.indicators?.quote?.[0]?.close
-
-    if (!timestamps || !closes) {
-      return { symbol, success: false, closes: [], error: 'レスポンス形式が不正です' }
+    const parsed = parseDailyCloses(await response.json())
+    if (!parsed.ok) {
+      return { symbol, success: false, closes: [], error: parsed.error }
     }
-
-    // timestamp と close は同じ長さの配列で対応する。休場明けなどで close が
-    // null になる要素があるため、null は捨てる（後段で前営業日の値で埋める）。
-    const parsed: DailyClose[] = []
-    for (let i = 0; i < timestamps.length; i++) {
-      const close = closes[i]
-      if (close === null || close === undefined || !Number.isFinite(close)) continue
-      parsed.push({ priceDate: toPriceDate(timestamps[i]), close })
-    }
-
-    if (parsed.length === 0) {
-      return { symbol, success: false, closes: [], error: '有効な終値がありませんでした' }
-    }
-
-    return { symbol, success: true, closes: parsed }
+    return { symbol, success: true, closes: parsed.closes }
   } catch (error) {
     return {
       symbol,

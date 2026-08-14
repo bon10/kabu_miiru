@@ -18,6 +18,66 @@ export interface RecalculationResult {
   orphanedSells: OrphanedSell[]
 }
 
+// 再生に必要な取引の最小形。Prisma の Decimal を number に落とした値を渡す。
+export interface ReplayTransaction {
+  id: number
+  transactionType: 'BUY' | 'SELL'
+  shares: number
+  pricePerShare: number
+  fee: number
+  transactionDate: Date
+}
+
+export interface ReplayResult {
+  shares: number
+  costBasis: number
+  realizedProfitLoss: number
+  lastPurchaseDate: Date | null
+  lastSaleDate: Date | null
+  orphanedSells: OrphanedSell[]
+}
+
+// 平均取得単価法で取引履歴を再生する（ADR 0003）。
+// DB に触れない純粋関数。日付順に並んでいることを前提とする。
+export function replayTransactions(transactions: ReplayTransaction[]): ReplayResult {
+  let shares = 0
+  let costBasis = 0
+  let realizedProfitLoss = 0
+  let lastPurchaseDate: Date | null = null
+  let lastSaleDate: Date | null = null
+  const orphanedSells: OrphanedSell[] = []
+
+  for (const tx of transactions) {
+    if (tx.transactionType === 'BUY') {
+      costBasis += tx.shares * tx.pricePerShare + tx.fee
+      shares += tx.shares
+      lastPurchaseDate = tx.transactionDate
+    } else if (tx.transactionType === 'SELL') {
+      if (shares <= 0) {
+        // 取得原価が無く損益を計算できない。集計からは外すが、黙って捨てず記録して返す
+        orphanedSells.push({
+          transactionId: tx.id,
+          transactionDate: tx.transactionDate,
+          shares: tx.shares,
+        })
+        continue
+      }
+      const avgPrice = costBasis / shares
+      const sellShares = Math.min(tx.shares, shares)
+      realizedProfitLoss += (tx.pricePerShare - avgPrice) * sellShares - tx.fee
+      costBasis -= avgPrice * sellShares
+      shares -= sellShares
+      lastSaleDate = tx.transactionDate
+      if (shares <= 0) {
+        shares = 0
+        costBasis = 0
+      }
+    }
+  }
+
+  return { shares, costBasis, realizedProfitLoss, lastPurchaseDate, lastSaleDate, orphanedSells }
+}
+
 // 保有株数ゼロの時点に SELL が置かれている状態を表すエラー。
 // 取引の登録・編集・削除の各ルートで捕捉し、400 として差し戻す。
 export class TransactionOrderError extends Error {
@@ -64,44 +124,17 @@ export async function recalculateStockAggregates(
 
   if (!stock) return { orphanedSells: [] }
 
-  let shares = 0
-  let costBasis = 0
-  let realizedProfitLoss = 0
-  let lastPurchaseDate: Date | null = null
-  let lastSaleDate: Date | null = null
-  const orphanedSells: OrphanedSell[] = []
-
-  for (const tx of transactions) {
-    const txShares = Number(tx.shares)
-    const txPrice = Number(tx.pricePerShare)
-    const txFee = Number(tx.fee)
-
-    if (tx.transactionType === 'BUY') {
-      costBasis += txShares * txPrice + txFee
-      shares += txShares
-      lastPurchaseDate = tx.transactionDate
-    } else if (tx.transactionType === 'SELL') {
-      if (shares <= 0) {
-        // 取得原価が無く損益を計算できない。集計からは外すが、黙って捨てず記録して返す
-        orphanedSells.push({
-          transactionId: tx.id,
-          transactionDate: tx.transactionDate,
-          shares: txShares,
-        })
-        continue
-      }
-      const avgPrice = costBasis / shares
-      const sellShares = Math.min(txShares, shares)
-      realizedProfitLoss += (txPrice - avgPrice) * sellShares - txFee
-      costBasis -= avgPrice * sellShares
-      shares -= sellShares
-      lastSaleDate = tx.transactionDate
-      if (shares <= 0) {
-        shares = 0
-        costBasis = 0
-      }
-    }
-  }
+  const { shares, costBasis, realizedProfitLoss, lastPurchaseDate, lastSaleDate, orphanedSells } =
+    replayTransactions(
+      transactions.map((tx) => ({
+        id: tx.id,
+        transactionType: tx.transactionType,
+        shares: Number(tx.shares),
+        pricePerShare: Number(tx.pricePerShare),
+        fee: Number(tx.fee),
+        transactionDate: tx.transactionDate,
+      })),
+    )
 
   const avgAcquisitionPrice = shares > 0 ? costBasis / shares : 0
   const investmentAmount = costBasis
