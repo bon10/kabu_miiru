@@ -44,6 +44,15 @@ pnpm lint
 pnpm dlx prettier --write .
 ```
 
+**テスト（Vitest）:**
+```bash
+pnpm test                   # 全テストを1回実行
+pnpm test:watch             # 変更監視でループ実行（TDD用）
+```
+- 純粋ロジックは `src/lib` に抽出して単体テストする（例: `src/lib/dividend.ts` ↔ `src/lib/dividend.test.ts`）
+- 設定は `vitest.config.mts`（node 環境・`@/` エイリアス）
+- TDD の進め方は `.claude/skills/tdd` を参照
+
 ## アーキテクチャ
 
 ### 技術スタック

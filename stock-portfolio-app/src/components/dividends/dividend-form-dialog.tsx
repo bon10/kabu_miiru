@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { formatMoney } from '@/lib/utils'
+import { calcDividendReceipt, DIVIDEND_CALC_MESSAGES } from '@/lib/dividend'
 
 export interface DividendStockOption {
   id: number
@@ -107,9 +108,9 @@ export function DividendFormDialog({
   )
   const sharesHeld = selectedStock?.sharesHeld ?? 0
   const perShareValue = Number(dividendPerShare)
-  const perShareValid = Number.isFinite(perShareValue) && perShareValue > 0
-  // 保存前の目安。実際の保存額はサーバー側の最新保有株数で確定するため「想定」と呼ぶ。
-  const estimatedAmount = perShareValid ? perShareValue * sharesHeld : 0
+  // 想定受取額の計算・検証はサーバーと同じ calcDividendReceipt に委ねる（計算の二重化を避ける）。
+  // 実際の保存額はサーバー側の最新保有株数で確定するため、ここでの値は「想定」。
+  const calc = calcDividendReceipt(perShareValue, sharesHeld)
 
   // 銘柄を選ぶと受取通貨の初期値をその市場に合わせる。
   // ただしユーザーが通貨を明示的に変更済みなら尊重して上書きしない。
@@ -129,12 +130,8 @@ export function DividendFormDialog({
       setError('銘柄を選択してください')
       return
     }
-    if (!perShareValid) {
-      setError('1 株あたり配当金は 0 より大きい値を指定してください')
-      return
-    }
-    if (sharesHeld <= 0) {
-      setError('保有株数が 0 のため受取配当を計算できません')
+    if (!calc.ok) {
+      setError(DIVIDEND_CALC_MESSAGES[calc.error])
       return
     }
 
@@ -247,9 +244,7 @@ export function DividendFormDialog({
                 <span className="text-muted-foreground">
                   想定受取額:{' '}
                   <span className="font-semibold text-blue-600">
-                    {perShareValid
-                      ? formatMoney(estimatedAmount, currency)
-                      : '—'}
+                    {calc.ok ? formatMoney(calc.total, currency) : '—'}
                   </span>
                 </span>
               </div>

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpyByCurrency } from '@/lib/currency'
+import { calcDividendReceipt, DIVIDEND_CALC_MESSAGES } from '@/lib/dividend'
 
 // 期末/中間/四半期/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
 // 表示専用ラベルで集計には使わないため任意。証券会社が期を示さず判別できない場合は未指定（NULL）で保存できる。
@@ -101,14 +102,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 入力は「1 株あたり配当金」。受取総額は保存時に現在の保有株数を掛けて確定する。
+    // 入力は「1 株あたり配当金」。受取総額は保存時に現在の保有株数を掛けて確定する（後述）。
     const dividendPerShare = Number(body.dividendPerShare)
-    if (!Number.isFinite(dividendPerShare) || dividendPerShare <= 0) {
-      return Response.json(
-        createErrorResponse('BAD_REQUEST', '1 株あたり配当金は 0 より大きい値を指定してください'),
-        { status: 400 },
-      )
-    }
 
     // 配当種別は任意。指定された場合のみ許可値を検証し、未指定は NULL として保存する。
     const dividendType =
@@ -146,15 +141,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 保有株数は Transaction 由来の派生キャッシュ（ADR 0003）。この現在値を
-    // 1 株あたり配当金に掛けて受取総額とする。保有 0 では総額を決められない。
+    // 1 株あたり配当金に掛けて受取総額とする（計算・検証は calcDividendReceipt に集約）。
     const sharesHeld = Number(stock.sharesHeld)
-    if (!Number.isFinite(sharesHeld) || sharesHeld <= 0) {
+    const calc = calcDividendReceipt(dividendPerShare, sharesHeld)
+    if (!calc.ok) {
       return Response.json(
-        createErrorResponse('BAD_REQUEST', '保有株数が 0 のため受取配当を計算できません'),
+        createErrorResponse('BAD_REQUEST', DIVIDEND_CALC_MESSAGES[calc.error]),
         { status: 400 },
       )
     }
-    const dividendAmount = dividendPerShare * sharesHeld
+    const dividendAmount = calc.total
 
     const created = await prisma.dividendHistory.create({
       data: {
