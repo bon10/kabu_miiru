@@ -73,6 +73,29 @@ curl "https://query1.finance.yahoo.com/v8/finance/chart/7203.T" \
 }
 ```
 
+#### 日次終値の取得（range / interval）
+
+ポートフォリオ推移（[ADR 0008](7-adr/0008-portfolio-timeline-from-daily-close.md)）で使う**過去の日次終値**は、同じ chart エンドポイントに `range` と `interval` を付けて取得する。
+
+```
+GET https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range={range}&interval=1d
+```
+
+**リクエスト例**:
+
+```bash
+curl "https://query1.finance.yahoo.com/v8/finance/chart/7203.T?range=1mo&interval=1d" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+```
+
+終値は `chart.result[0].indicators.quote[0].close`、対応する日付は `chart.result[0].timestamp`（UNIX 秒）に**同じ長さの配列**で入る。
+
+> **確認方法と限界**：Yahoo Finance は非公式 API であり公式ドキュメントが存在しない。ここに書いた挙動は 2026-08-14 に上記リクエストを実行し、1 レスポンスに 22 営業日分の終値が含まれることを実測して確認したものである。**仕様として保証されたものではなく、予告なく変わりうる**。ADR 0008 の見直しトリガーにこの前提が崩れた場合を含めている。
+
+**設計上の含意**：期間分が 1 リクエストで返るため、**アプリを止めていた期間も後から一括で埋められる**。1 ヶ月の欠測でも 1 日ぶんの更新でも、55 銘柄に対するリクエスト数は同じ 55 回で変わらない。この性質が「保存するのは日次終値という原資料だけ」という ADR 0008 の設計を成立させている。
+
+なお [fetchMultipleStockPrices](../src/lib/stock-price.ts) は銘柄を**直列**で処理するため、バックフィルは画面リクエストからではなくバッチ経路で実行する。
+
 ### 実装詳細
 
 #### 銘柄コード変換

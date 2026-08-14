@@ -2,7 +2,12 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
-import { recalculateStockAggregates, validateSellTransaction } from '@/lib/stock-aggregation'
+import {
+  assertNoOrphanedSells,
+  recalculateStockAggregates,
+  TransactionOrderError,
+  validateSellTransaction,
+} from '@/lib/stock-aggregation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -155,7 +160,9 @@ export async function POST(request: NextRequest) {
           },
         },
       })
-      await recalculateStockAggregates(body.stockId, tx)
+      // validateSellTransaction は現時点の保有株数しか見ないため、過去日付の SELL が
+      // 先行する BUY より前に来るケースを検出できない。再計算結果で最終確認する。
+      assertNoOrphanedSells(await recalculateStockAggregates(body.stockId, tx))
       return created
     })
 
@@ -176,6 +183,12 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     )
   } catch (error) {
+    if (error instanceof TransactionOrderError) {
+      return Response.json(
+        createErrorResponse('INVALID_TRANSACTION_ORDER', error.message, error.orphanedSells),
+        { status: 400 },
+      )
+    }
     return handleApiError(error)
   }
 }
