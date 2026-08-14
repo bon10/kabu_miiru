@@ -42,9 +42,9 @@ git diff --cached
 - ADR が無い領域で新しい設計判断が入っている場合も、新規 ADR の要否を確認します
 - 抵触なしなら「ADR 追従の必要なし」と述べて次へ進みます（ADR ディレクトリが無いプロジェクトではスキップ）
 
-### 4. Lint & TypeCheck の実行
+### 4. Lint & TypeCheck & Test の実行
 
-ステージングされたファイルの変更を対象に、lint と typecheck を実行します。
+ステージングされたファイルの変更を対象に、lint・typecheck・テストを実行します。
 
 ```bash
 cd stock-portfolio-app && pnpm lint
@@ -54,9 +54,14 @@ cd stock-portfolio-app && pnpm lint
 cd stock-portfolio-app && npx tsc --noEmit
 ```
 
-- エラーが発生した場合は、**今回の変更に起因するエラーのみ**を修正してください（既存エラーは無視）。
+```bash
+cd stock-portfolio-app && pnpm test
+```
+
+- エラー・テスト失敗が発生した場合は、**今回の変更に起因するもののみ**を修正してください（既存の失敗は無視）。
 - 修正した場合は、修正ファイルを再度ステージング（`git add`）してください。
-- 修正後、再度 lint / typecheck を実行してエラーが解消されたことを確認してください。
+- 修正後、再度 lint / typecheck / test を実行して解消されたことを確認してください。
+- テストが 1 件も無い領域の変更なら test はスキップ可（テストランナー未導入のプロジェクトでは省略）。
 
 ### 5. 簡潔な日本語コミットメッセージを作成
 
