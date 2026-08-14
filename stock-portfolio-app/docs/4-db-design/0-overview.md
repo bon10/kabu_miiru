@@ -50,8 +50,8 @@ stock-portfolio-app/prisma/schema.prisma
 
 ### Transaction（取引履歴）
 
-- **目的**: 売買・配当取引の完全な記録
-- **特徴**: 時系列データの整合性保証
+- **目的**: 売買（BUY / SELL）取引の完全な記録。保有株数・投資額・実現損益の Source of Truth（ADR 0003）
+- **特徴**: 時系列データの整合性保証。配当は含めず `DividendHistory` で別管理（ADR 0002）
 - **関連**: Stockテーブルとの1:N関係
 
 ### PriceHistory（価格履歴）
@@ -127,7 +127,8 @@ INDEX idx_price_stock_recorded (stock_id, recorded_at)
 
 - `BUY`: 購入取引
 - `SELL`: 売却取引
-- `DIVIDEND`: 配当受取
+
+> 旧 `DIVIDEND` は ADR 0002 により削除済み（配当は `DividendHistory`）。現行 enum は `BUY` / `SELL` の 2 値。
 
 ### PriceUpdateStatus
 

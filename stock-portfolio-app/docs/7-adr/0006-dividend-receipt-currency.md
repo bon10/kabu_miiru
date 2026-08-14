@@ -61,4 +61,5 @@ Accepted (2026-07-08)
 - [ADR 0005 米国株は当日レートで円換算する（読み取り時換算）](0005-us-stock-jpy-conversion.md)（本 ADR の換算原則・レート取得の土台）
 - [ADR 0002 配当を売買取引から分離した独立エンティティとする](0002-dividend-as-separate-entity.md)（`DividendHistory` の位置づけ）
 - [ADR 0004 配当の期間集計はカレンダー年基準](0004-dividend-period-calendar-year.md)（集計期間の定義）
+- [ADR 0007 受取配当額は登録時の 1株配当 × 保有株数で確定](0007-dividend-receipt-amount-from-per-share.md)（1 株あたり配当金 × 保有株数の掛け算を、本 ADR の受取通貨建てのまま行う）
 - [ユビキタス言語：為替・通貨関連](../2-domain/ubiquitous-language.md#為替通貨関連)

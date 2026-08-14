@@ -41,3 +41,4 @@ Accepted (2026-06-12)
 ## 関連
 
 - [ADR 0005 米国株の円換算](0005-us-stock-jpy-conversion.md)（Transaction を持たない保有の実例）
+- [ADR 0007 受取配当額は登録時の 1株配当 × 保有株数で確定](0007-dividend-receipt-amount-from-per-share.md)（本 ADR の派生キャッシュ `Stock.sharesHeld` を係数として参照する。ただし受取配当の総額は登録時点で凍結し再計算しない点で、本 ADR の「派生値は再計算」とは方針が分かれる）

@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     if (
       !body.stockId ||
-      body.dividendAmount === undefined ||
+      body.dividendPerShare === undefined ||
       !body.paymentDate
     ) {
       return Response.json(
@@ -101,10 +101,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const dividendAmount = Number(body.dividendAmount)
-    if (!Number.isFinite(dividendAmount) || dividendAmount <= 0) {
+    // 入力は「1 株あたり配当金」。受取総額は保存時に現在の保有株数を掛けて確定する。
+    const dividendPerShare = Number(body.dividendPerShare)
+    if (!Number.isFinite(dividendPerShare) || dividendPerShare <= 0) {
       return Response.json(
-        createErrorResponse('BAD_REQUEST', '配当金額は 0 より大きい値を指定してください'),
+        createErrorResponse('BAD_REQUEST', '1 株あたり配当金は 0 より大きい値を指定してください'),
         { status: 400 },
       )
     }
@@ -143,6 +144,17 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       )
     }
+
+    // 保有株数は Transaction 由来の派生キャッシュ（ADR 0003）。この現在値を
+    // 1 株あたり配当金に掛けて受取総額とする。保有 0 では総額を決められない。
+    const sharesHeld = Number(stock.sharesHeld)
+    if (!Number.isFinite(sharesHeld) || sharesHeld <= 0) {
+      return Response.json(
+        createErrorResponse('BAD_REQUEST', '保有株数が 0 のため受取配当を計算できません'),
+        { status: 400 },
+      )
+    }
+    const dividendAmount = dividendPerShare * sharesHeld
 
     const created = await prisma.dividendHistory.create({
       data: {
