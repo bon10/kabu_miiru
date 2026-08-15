@@ -64,7 +64,7 @@ const fetcher = async (url: string) => {
 export default function DashboardClient({ summary }: DashboardClientProps) {
   const [mounted, setMounted] = useState(false)
   const { data: timelineData } = useSWR<TimelineResponse>(
-    '/api/portfolio/timeline?months=12',
+    '/api/portfolio/timeline?range=1y',
     fetcher
   )
 
