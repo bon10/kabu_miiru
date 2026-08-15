@@ -41,15 +41,18 @@ interface DashboardClientProps {
   }
 }
 
-interface TimelineSnapshot {
+// 推移 API の 1 点（ADR 0009）。評価額・投資元本は保存値ではなく読み取り時の再構成値。
+interface TimelinePoint {
   date: string
-  investedAmount: number
+  marketValue: number
+  investedPrincipal: number
+  unrealizedPL: number
   cumulativeRealizedPL: number
   cumulativeDividends: number
 }
 
 interface TimelineResponse {
-  data: { snapshots: TimelineSnapshot[] }
+  data: { points: TimelinePoint[] }
 }
 
 const fetcher = async (url: string) => {
@@ -73,11 +76,13 @@ export default function DashboardClient({ summary }: DashboardClientProps) {
     summary.totalProfitLoss >= 0 ? 'text-green-600' : 'text-red-600'
   const isProfit = summary.totalProfitLoss >= 0
 
+  // 推移は日次で返るため、ダッシュボードでは評価額と投資元本の 2 本だけを見せる。
+  // 詳細（評価損益・配当の内訳）は /portfolio に委譲する。
   const chartData =
-    timelineData?.data.snapshots.map((s) => ({
-      label: s.date.slice(0, 7),
-      investedAmount: s.investedAmount,
-      cumulativeDividends: s.cumulativeDividends,
+    timelineData?.data.points?.map((p) => ({
+      label: p.date,
+      marketValue: p.marketValue,
+      investedPrincipal: p.investedPrincipal,
     })) ?? []
 
   return (
@@ -153,7 +158,7 @@ export default function DashboardClient({ summary }: DashboardClientProps) {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>直近1年の推移</CardTitle>
+          <CardTitle>直近1年の資産推移</CardTitle>
           <Link
             href="/portfolio"
             className="text-sm text-primary hover:underline"
@@ -172,7 +177,7 @@ export default function DashboardClient({ summary }: DashboardClientProps) {
                   margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
+                  <XAxis dataKey="label" minTickGap={40} />
                   <YAxis
                     tickFormatter={(value) =>
                       `${Math.round((value as number) / 1000)}k`
@@ -183,18 +188,19 @@ export default function DashboardClient({ summary }: DashboardClientProps) {
                   />
                   <Line
                     type="monotone"
-                    dataKey="investedAmount"
-                    name="投資額"
+                    dataKey="marketValue"
+                    name="評価額"
                     stroke="#0088FE"
                     strokeWidth={2}
                     dot={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="cumulativeDividends"
-                    name="累計配当受取"
-                    stroke="#FFBB28"
+                    dataKey="investedPrincipal"
+                    name="投資元本"
+                    stroke="#8884d8"
                     strokeWidth={2}
+                    strokeDasharray="4 4"
                     dot={false}
                   />
                 </LineChart>
