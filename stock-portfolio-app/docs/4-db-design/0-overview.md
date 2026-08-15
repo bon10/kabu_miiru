@@ -52,13 +52,23 @@ stock-portfolio-app/prisma/schema.prisma
 
 - **目的**: 売買（BUY / SELL）取引の完全な記録。保有株数・投資額・実現損益の Source of Truth（ADR 0003）
 - **特徴**: 時系列データの整合性保証。配当は含めず `DividendHistory` で別管理（ADR 0002）
+- **初期残高**: 移行データ由来の保有は `isInitialBalance` フラグ付きの BUY として表す（ADR 0009）。`TransactionType` は BUY / SELL のまま増やさず、集計上も BUY と同一に扱う。フラグが示すのは「取引日が推定値である」ことだけ
 - **関連**: Stockテーブルとの1:N関係
 
 ### PriceHistory（価格履歴）
 
 - **目的**: 株価の時系列データ保存
-- **特徴**: 市場セッション別の管理
+- **特徴**: 市場セッション別の管理。現状 `recordedAt` は任意時刻で、場中に取得した値と終値が混在する
 - **用途**: チャート表示・分析機能
+- **関連**: ポートフォリオ推移が使う日次終値は本テーブルではなく `DailyPrice` に分離した（ADR 0009）
+
+### DailyPrice（日次終値）
+
+- **目的**: ポートフォリオ推移の原資料となる、営業日ごとの終値（ADR 0009）
+- **特徴**: `(stockId, priceDate)` でユニーク。1 銘柄 1 日 1 レコード。価格は建値通貨のまま保持し、円換算は読み取り時に `ExchangeRate` で行う
+- **`PriceHistory` との違い**: `PriceHistory` は `recordedAt` が任意時刻で場中の値と終値が混在するため時系列の再構成に使えない。日単位のユニーク制約を掛けるために別テーブルとした
+- **`isFilled`**: 非営業日・取得失敗日を直前の営業日の終値で補完したレコードかどうか。実勢とのズレを UI で判別できるよう、補完値を実測値と区別する
+- **取り込み**: [/api/batch/daily-close](../../src/app/api/batch/daily-close/route.ts) が Yahoo Finance の `range` / `interval=1d` でまとめて取得する。既存レコードは上書きしないため重複実行しても安全
 
 ### DividendHistory（配当履歴）
 
@@ -77,6 +87,7 @@ stock-portfolio-app/prisma/schema.prisma
 - **目的**: 米国株の円換算に使う USD/JPY レートの保存（ADR 0005）
 - **特徴**: `(base, quote, rateDate)` でユニーク。1 日 1 レコード
 - **用途**: Yahoo Finance `USDJPY=X` を日次取得し、表示・集計時の円換算に利用
+- **推移での役割**: 過去日の評価額は**その日のレート**で換算する（ADR 0009）。現状の [getCurrentUsdJpyRate](../../src/lib/exchange-rate.ts) は当日 1 件のみを取得するため、過去日を範囲でバックフィルする経路が別途必要
 
 ## データ整合性戦略
 

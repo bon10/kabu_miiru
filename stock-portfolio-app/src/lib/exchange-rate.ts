@@ -1,10 +1,14 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { fetchDailyCloseSeries } from '@/lib/daily-price'
 
 type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma
 
 const BASE = 'USD'
 const QUOTE = 'JPY'
+
+// Yahoo Finance における USD/JPY の系列シンボル。銘柄コード変換は不要。
+const USDJPY_SYMBOL = 'USDJPY=X'
 
 // サーバーローカルの暦日 0 時（= その日のレコードキー）を返す。
 // 「1 日 1 レコード」の粒度を暦日で揃えるため、時刻を切り落とす。
@@ -80,4 +84,72 @@ export async function getCurrentUsdJpyRate(
   if (latest) return Number(latest.rate)
 
   throw new Error('USD/JPY レートを取得できませんでした（Yahoo 取得失敗・保存済みレートなし）')
+}
+
+export interface RateBackfillSummary {
+  range: string
+  success: boolean
+  savedCount: number
+  error?: string
+}
+
+// 過去の USD/JPY レートをまとめて取り込む（ADR 0009）。
+//
+// getCurrentUsdJpyRate は当日 1 件しか取りに行かないため、アプリを起動していなかった
+// 期間のレートが欠ける。ポートフォリオ推移では過去日の評価額を「その日のレート」で
+// 円換算するため、日次終値と同様にレートも遡って埋める必要がある。
+//
+// 既存レコードは上書きしない（取得済みの実測値を後から書き換えないため）。
+export async function backfillUsdJpyRates(range: string): Promise<RateBackfillSummary> {
+  const fetched = await fetchDailyCloseSeries(USDJPY_SYMBOL, range)
+
+  if (!fetched.success) {
+    return { range, success: false, savedCount: 0, error: fetched.error }
+  }
+
+  const existing = await prisma.exchangeRate.findMany({
+    where: {
+      base: BASE,
+      quote: QUOTE,
+      rateDate: { gte: fetched.closes[0].priceDate },
+    },
+    select: { rateDate: true },
+  })
+  const existingKeys = new Set(existing.map((e) => toRateDate(e.rateDate).getTime()))
+
+  const toCreate = fetched.closes
+    .filter((c) => !existingKeys.has(c.priceDate.getTime()))
+    .map((c) => ({
+      base: BASE,
+      quote: QUOTE,
+      rate: c.close,
+      rateDate: c.priceDate,
+      source: 'yahoo',
+    }))
+
+  if (toCreate.length === 0) {
+    return { range, success: true, savedCount: 0 }
+  }
+
+  const created = await prisma.exchangeRate.createMany({
+    data: toCreate,
+    skipDuplicates: true,
+  })
+
+  return { range, success: true, savedCount: created.count }
+}
+
+// 指定期間の USD/JPY レートを暦日キーの Map で返す。
+// 推移の再構成で日ごとに引くため、1 クエリで読んでメモリ上で解決する。
+export async function getUsdJpyRateMap(from: Date): Promise<Map<number, number>> {
+  const rates = await prisma.exchangeRate.findMany({
+    where: { base: BASE, quote: QUOTE, rateDate: { gte: toRateDate(from) } },
+    orderBy: { rateDate: 'asc' },
+  })
+
+  const map = new Map<number, number>()
+  for (const r of rates) {
+    map.set(toRateDate(r.rateDate).getTime(), Number(r.rate))
+  }
+  return map
 }

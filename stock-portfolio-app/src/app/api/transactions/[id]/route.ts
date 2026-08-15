@@ -1,7 +1,11 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
-import { recalculateStockAggregates } from '@/lib/stock-aggregation'
+import {
+  assertNoOrphanedSells,
+  recalculateStockAggregates,
+  TransactionOrderError,
+} from '@/lib/stock-aggregation'
 import { ALLOW_TRANSACTION_EDIT, getBooleanSetting } from '@/lib/settings'
 
 // 取引履歴の編集・削除は設定フラグ（既定オフ）で許可されているときのみ受け付ける。
@@ -80,13 +84,21 @@ export async function DELETE(
       })
     }
 
+    // 先行する BUY を削除すると後続の SELL が保有ゼロの時点に取り残される。
+    // その状態は実現損益を計算できないため、削除ごとロールバックして差し戻す。
     await prisma.$transaction(async (tx) => {
       await tx.transaction.delete({ where: { id: transactionId } })
-      await recalculateStockAggregates(existing.stockId, tx)
+      assertNoOrphanedSells(await recalculateStockAggregates(existing.stockId, tx))
     })
 
     return Response.json(createSuccessResponse({ id: transactionId }))
   } catch (error) {
+    if (error instanceof TransactionOrderError) {
+      return Response.json(
+        createErrorResponse('INVALID_TRANSACTION_ORDER', error.message, error.orphanedSells),
+        { status: 400 },
+      )
+    }
     return handleApiError(error)
   }
 }
@@ -146,6 +158,8 @@ export async function PUT(
 
     // 取引そのものは stock を付け替えない（銘柄変更は非対応）。
     // 更新後、その銘柄の集計値（保有株数・取得単価・損益）を取引履歴から再計算する。
+    // 取引日を SELL より後ろにずらすと保有ゼロ時点の SELL が生まれ実現損益が消えるため、
+    // その場合は更新ごとロールバックする（ADR 0008）。
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.transaction.update({
         where: { id: transactionId },
@@ -162,7 +176,7 @@ export async function PUT(
           stock: { select: { stockName: true, code: true } },
         },
       })
-      await recalculateStockAggregates(existing.stockId, tx)
+      assertNoOrphanedSells(await recalculateStockAggregates(existing.stockId, tx))
       return result
     })
 
@@ -182,6 +196,12 @@ export async function PUT(
       }),
     )
   } catch (error) {
+    if (error instanceof TransactionOrderError) {
+      return Response.json(
+        createErrorResponse('INVALID_TRANSACTION_ORDER', error.message, error.orphanedSells),
+        { status: 400 },
+      )
+    }
     return handleApiError(error)
   }
 }
