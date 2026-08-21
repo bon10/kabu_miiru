@@ -96,6 +96,33 @@ describe('computeTimeline', () => {
     expect(r.points.map((p) => p.investedPrincipal)).toEqual([1000, 1000, 1000])
   })
 
+  it('買い増した日から保有株数と投資元本が増える', () => {
+    const r = computeTimeline(
+      input({
+        // 01-03 に 1 株 @1000、01-04 に 1 株 @1400（手数料 100）を買い増し
+        transactions: [buy(1, '2025-01-03', 1, 1000), buy(1, '2025-01-04', 1, 1400, 100)],
+        closeMap: closes(1, { '2025-01-03': 1000, '2025-01-04': 1400, '2025-01-05': 1400 }),
+      }),
+    )
+    // 評価額は 1 株ぶん → 2 株ぶんへ段差になる
+    expect(r.points.map((p) => p.marketValue)).toEqual([1000, 2800, 2800])
+    // 投資元本は取得原価の累計。手数料は取得原価に含める
+    expect(r.points.map((p) => p.investedPrincipal)).toEqual([1000, 2500, 2500])
+  })
+
+  it('取得単価と同値で買い増しても評価損益は手数料ぶんしか動かない', () => {
+    const r = computeTimeline(
+      input({
+        // 01-04 の終値と同じ 1400 で買い増す。買い増し自体では損益は生まれない
+        transactions: [buy(1, '2025-01-03', 1, 1000), buy(1, '2025-01-04', 1, 1400, 100)],
+        closeMap: closes(1, { '2025-01-03': 1000, '2025-01-04': 1400, '2025-01-05': 1400 }),
+      }),
+    )
+    // 買い増さなければ 01-04 の評価損益は 1400 - 1000 = 400。
+    // 実際は 300 で、差の 100 は手数料ぶんだけ
+    expect(r.points[1].unrealizedPL).toBe(300)
+  })
+
   it('終値の無い日は直前の営業日の終値で埋める', () => {
     const r = computeTimeline(
       input({
@@ -177,6 +204,42 @@ describe('computeTimeline', () => {
     expect(r.points[1].investedPrincipal).toBe(0)
     // 売却後も実現損益は維持される
     expect(r.points[2].cumulativeRealizedPL).toBe(300)
+  })
+
+  // 推移も replayTransactions と同じ平均取得単価法を日ごとに回すため、
+  // 同一取引日の BUY と SELL の順序で結果が変わる。buildPortfolioTimeline は
+  // 集計側と同じ TRANSACTION_REPLAY_ORDER（取引日 → 登録順）で読み出す。
+  describe('同一取引日に BUY と SELL がある場合', () => {
+    const timelineWith = (transactions: TimelineInput['transactions']) =>
+      computeTimeline(
+        input({
+          transactions,
+          closeMap: closes(1, { '2025-01-03': 1000, '2025-01-04': 1500 }),
+          today: day('2025-01-04'),
+        }),
+      ).points[1]
+
+    it('BUY が先なら当日の買い増しを含む平均取得単価で実現損益を出す', () => {
+      const p = timelineWith([
+        buy(1, '2025-01-03', 1, 1000),
+        buy(1, '2025-01-04', 1, 1400),
+        sell(1, '2025-01-04', 1, 1500),
+      ])
+      // 買い増し後の平均取得単価 (1000 + 1400) / 2 = 1200
+      expect(p.cumulativeRealizedPL).toBe(300)
+      expect(p.investedPrincipal).toBe(1200)
+    })
+
+    it('SELL が先だと買い増し前の平均取得単価で実現損益が変わる', () => {
+      const p = timelineWith([
+        buy(1, '2025-01-03', 1, 1000),
+        sell(1, '2025-01-04', 1, 1500),
+        buy(1, '2025-01-04', 1, 1400),
+      ])
+      // 買い増し前の平均取得単価 1000 で売却したことになり、実現損益が 200 増える
+      expect(p.cumulativeRealizedPL).toBe(500)
+      expect(p.investedPrincipal).toBe(1400)
+    })
   })
 
   it('受取配当を支払日以降で累計する', () => {

@@ -18,6 +18,18 @@ export interface RecalculationResult {
   orphanedSells: OrphanedSell[]
 }
 
+// 取引を再生するときの並び順。
+//
+// 平均取得単価法は取引の順序で結果が変わる（同一日に BUY と SELL があると、
+// どちらを先に処理するかで平均取得単価と実現損益が変わる）。一方 transactionDate は
+// 取引フォームが日付だけを受け取るため時刻を持たず、同一日の取引はすべて同値になる。
+// 約定の前後関係を復元できる情報が他に無いので、登録順（id の昇順）を採用する。
+// 再生に関わるクエリはすべてこの順序を使い、日付だけで並べない。
+export const TRANSACTION_REPLAY_ORDER = [
+  { transactionDate: 'asc' },
+  { id: 'asc' },
+] as const satisfies Prisma.TransactionOrderByWithRelationInput[]
+
 // 再生に必要な取引の最小形。Prisma の Decimal を number に落とした値を渡す。
 export interface ReplayTransaction {
   id: number
@@ -118,7 +130,7 @@ export async function recalculateStockAggregates(
     client.stock.findUnique({ where: { id: stockId } }),
     client.transaction.findMany({
       where: { stockId },
-      orderBy: { transactionDate: 'asc' },
+      orderBy: TRANSACTION_REPLAY_ORDER,
     }),
   ])
 

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { recalculateStockAggregates } from '@/lib/stock-aggregation'
+import { recalculateStockAggregates, TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
 import { formatDateKey } from '@/lib/daily-price'
 
 // 初期残高 Transaction の生成（ADR 0008）。
@@ -130,7 +130,7 @@ export function planInitialBalance(stock: InitialBalanceCandidate): InitialBalan
 export async function createInitialBalances(apply: boolean): Promise<InitialBalanceSummary> {
   const stocks = await prisma.stock.findMany({
     where: { sharesHeld: { gt: 0 } },
-    include: { transactions: { orderBy: { transactionDate: 'asc' } } },
+    include: { transactions: { orderBy: TRANSACTION_REPLAY_ORDER } },
   })
 
   const created: InitialBalanceCreated[] = []
@@ -236,7 +236,7 @@ export async function createInitialBalances(apply: boolean): Promise<InitialBala
 export async function findUnbackedSells() {
   const stocks = await prisma.stock.findMany({
     where: { sharesHeld: { lte: 0 }, transactions: { some: { transactionType: 'SELL' } } },
-    include: { transactions: { orderBy: { transactionDate: 'asc' } } },
+    include: { transactions: { orderBy: TRANSACTION_REPLAY_ORDER } },
   })
 
   return stocks

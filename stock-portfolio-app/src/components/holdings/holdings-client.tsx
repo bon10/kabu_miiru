@@ -29,7 +29,14 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
-import { cn, formatCurrency, formatPrice, formatPercentage } from '@/lib/utils'
+import {
+  cn,
+  formatCurrency,
+  formatPrice,
+  formatPercentage,
+  formatAvgAcquisitionPrice,
+  AVG_ACQUISITION_PRICE_NOTE,
+} from '@/lib/utils'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
@@ -310,7 +317,14 @@ export default function HoldingsClient() {
                   <TableHead>証券会社</TableHead>
                   <TableHead>市場</TableHead>
                   <TableHead className="text-right">保有株数</TableHead>
-                  <TableHead className="text-right">平均取得</TableHead>
+                  <TableHead className="text-right">
+                    <span
+                      className="cursor-help underline decoration-dotted underline-offset-4"
+                      title={AVG_ACQUISITION_PRICE_NOTE}
+                    >
+                      平均取得
+                    </span>
+                  </TableHead>
                   <TableHead className="text-right">現在価格</TableHead>
                   <TableHead className="text-right">投資額</TableHead>
                   <TableHead className="text-right">評価額</TableHead>
@@ -326,7 +340,7 @@ export default function HoldingsClient() {
                     <TableCell>{h.market}</TableCell>
                     <TableCell className="text-right">{h.sharesHeld}</TableCell>
                     <TableCell className="text-right">
-                      {formatPrice(h.avgAcquisitionPrice, h.market)}
+                      {formatAvgAcquisitionPrice(h.avgAcquisitionPrice, h.market)}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatPrice(h.currentPrice, h.market)}
@@ -393,7 +407,14 @@ export default function HoldingsClient() {
                     <TableHead>銘柄</TableHead>
                     <TableHead>市場</TableHead>
                     <TableHead className="text-right">保有株数</TableHead>
-                    <TableHead className="text-right">平均取得</TableHead>
+                    <TableHead className="text-right">
+                      <span
+                        className="cursor-help underline decoration-dotted underline-offset-4"
+                        title={AVG_ACQUISITION_PRICE_NOTE}
+                      >
+                        平均取得
+                      </span>
+                    </TableHead>
                     <TableHead className="text-right">現在価格</TableHead>
                     <TableHead className="text-right">投資額</TableHead>
                     <TableHead className="text-right">評価額</TableHead>
@@ -410,7 +431,7 @@ export default function HoldingsClient() {
                         {h.sharesHeld}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatPrice(h.avgAcquisitionPrice, h.market)}
+                        {formatAvgAcquisitionPrice(h.avgAcquisitionPrice, h.market)}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatPrice(h.currentPrice, h.market)}
