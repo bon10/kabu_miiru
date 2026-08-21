@@ -3,6 +3,7 @@ import { toDateKey, formatDateKey } from '@/lib/daily-price'
 import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
 import { resolveRange, type TimelineRange } from '@/lib/timeline-range'
+import { TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
 
 // ポートフォリオ推移の再構成（ADR 0009）。
 //
@@ -273,7 +274,7 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
 // 計算は computeTimeline 側に集約してあるので、ここには読み出しの都合だけを置く。
 export async function buildPortfolioTimeline(range: TimelineRange): Promise<TimelineResult> {
   const [transactions, dividends, stocks] = await Promise.all([
-    prisma.transaction.findMany({ orderBy: { transactionDate: 'asc' } }),
+    prisma.transaction.findMany({ orderBy: TRANSACTION_REPLAY_ORDER }),
     prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
     prisma.stock.findMany({ select: { id: true, code: true, stockName: true, market: true } }),
   ])

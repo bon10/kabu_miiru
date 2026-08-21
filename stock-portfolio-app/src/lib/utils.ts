@@ -25,6 +25,31 @@ export function formatPrice(value: number, market: string): string {
   }).format(value)
 }
 
+// 平均取得単価の表示桁数。取得原価 ÷ 保有株数 は割り切れないことがあるため、
+// 表示は小数第2位で四捨五入すると決めた（ADR 0010）。
+export const AVG_ACQUISITION_PRICE_DIGITS = 2
+
+// 平均取得単価を建値通貨で表示する。formatPrice と分けているのは、現在価格や
+// 目標価格が市場から来る値そのものなのに対し、平均取得単価だけが割り算の結果で
+// 端数を持つため。投資額は丸めない取得原価を保持しているので、
+// 平均取得単価 × 保有株数 と投資額はわずかにズレることがある（ADR 0010）。
+export function formatAvgAcquisitionPrice(value: number, market: string): string {
+  const isUs = market === '米国'
+  return new Intl.NumberFormat(isUs ? 'en-US' : 'ja-JP', {
+    style: 'currency',
+    currency: isUs ? 'USD' : 'JPY',
+    minimumFractionDigits: AVG_ACQUISITION_PRICE_DIGITS,
+    maximumFractionDigits: AVG_ACQUISITION_PRICE_DIGITS,
+  }).format(value)
+}
+
+// 平均取得単価の丸めについて、表示の近くに添える説明文。
+// 銘柄詳細と保有一覧で同じ文言を使うため定数にしている。
+export const AVG_ACQUISITION_PRICE_NOTE =
+  '平均取得単価は 取得原価 ÷ 保有株数 を小数第2位で四捨五入した表示値です。' +
+  '投資額は手数料を含む取得原価そのものを表示しているため、' +
+  '平均取得単価 × 保有株数 と一致しないことがあります。'
+
 // 金額を指定通貨（JPY / USD）建てで表示する。配当のように受取通貨を明示的に
 // 持つ値を、その通貨のまま見せるのに使う（円換算はしない）。
 export function formatMoney(value: number, currency: string): string {

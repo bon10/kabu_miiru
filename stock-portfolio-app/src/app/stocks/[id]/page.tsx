@@ -33,6 +33,8 @@ import {
   formatPercentage,
   formatDate,
   formatDateTime,
+  formatAvgAcquisitionPrice,
+  AVG_ACQUISITION_PRICE_NOTE,
   cn,
 } from '@/lib/utils'
 import { requestPriceUpdate } from '@/lib/price-update'
@@ -325,7 +327,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">平均取得単価</p>
                 <p className="text-2xl font-bold">
-                  {formatPrice(stock.avgAcquisitionPrice, stock.market)}
+                  {formatAvgAcquisitionPrice(stock.avgAcquisitionPrice, stock.market)}
                 </p>
               </div>
               <div>
@@ -343,6 +345,9 @@ export default function StockDetailPage() {
                 </p>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {AVG_ACQUISITION_PRICE_NOTE}
+            </p>
           </CardContent>
         </Card>
 

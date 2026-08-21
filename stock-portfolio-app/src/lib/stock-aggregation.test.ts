@@ -118,4 +118,44 @@ describe('replayTransactions', () => {
     expect(r.lastPurchaseDate).toBeNull()
     expect(r.lastSaleDate).toBeNull()
   })
+
+  // 同一取引日の BUY と SELL は、渡された配列の順序どおりに処理される。
+  // 取引フォームが日付だけを受け取り transactionDate が時刻を持たないため、
+  // 同一日の並び順は登録順（id 昇順）で決める（TRANSACTION_REPLAY_ORDER）。
+  // 下の 2 ケースは、同じ取引集合でも順序で結果が変わること＝並び順を
+  // 固定しなければならない理由を示す。
+  describe('同一取引日に BUY と SELL がある場合', () => {
+    const sameDayBuy = buy({ id: 2, shares: 1, pricePerShare: 1400, transactionDate: d('2025-03-01') })
+    const sameDaySell = sell({ id: 3, shares: 1, pricePerShare: 1500, transactionDate: d('2025-03-01') })
+    const priorBuy = buy({ id: 1, shares: 1, pricePerShare: 1000, transactionDate: d('2025-01-01') })
+
+    it('BUY が先なら当日の買い増しを含む平均取得単価で実現損益を出す', () => {
+      const r = replayTransactions([priorBuy, sameDayBuy, sameDaySell])
+      // 買い増し後の平均取得単価 (1000 + 1400) / 2 = 1200
+      expect(r.realizedProfitLoss).toBe(300)
+      expect(r.shares).toBe(1)
+      expect(r.costBasis).toBe(1200)
+    })
+
+    it('SELL が先だと買い増し前の平均取得単価で実現損益が変わる', () => {
+      const r = replayTransactions([priorBuy, sameDaySell, sameDayBuy])
+      // 買い増し前の平均取得単価 1000 で売却したことになり、実現損益が 200 増える
+      expect(r.realizedProfitLoss).toBe(500)
+      expect(r.shares).toBe(1)
+      expect(r.costBasis).toBe(1400)
+    })
+
+    // 順序で変わるのは実現損益と未実現損益の「内訳」だけで、合計は変わらない。
+    // 登録順が実際の約定順とズレても総損益は正しいままであることを示す。
+    // 同一日の並び順を登録順で決めてよいと判断した根拠（ADR 0003 補足）。
+    it('順序が変わっても 実現損益 + 未実現損益 は変わらない', () => {
+      const closePrice = 1500
+      const totalPL = (txs: ReplayTransaction[]) => {
+        const r = replayTransactions(txs)
+        return r.realizedProfitLoss + (closePrice * r.shares - r.costBasis)
+      }
+      expect(totalPL([priorBuy, sameDayBuy, sameDaySell])).toBe(600)
+      expect(totalPL([priorBuy, sameDaySell, sameDayBuy])).toBe(600)
+    })
+  })
 })
