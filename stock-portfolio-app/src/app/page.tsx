@@ -1,4 +1,5 @@
 import DashboardClient from '@/components/dashboard-client'
+import { forwardSessionCookie } from '@/lib/server-fetch'
 
 // サーバーコンポーネントでサマリーデータを取得
 async function getSummaryData() {
@@ -7,6 +8,7 @@ async function getSummaryData() {
       `${process.env.NEXTAUTH_URL || 'http://localhost:3300'}/api/summary`,
       {
         cache: 'no-store',
+        headers: await forwardSessionCookie(),
       }
     )
 

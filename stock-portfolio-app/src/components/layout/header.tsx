@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { signOut, useSession } from 'next-auth/react'
 import {
   LayoutDashboard,
   Building2,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Settings,
   PieChart,
+  LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -64,6 +66,7 @@ const navigation = [
 export default function Header() {
   const pathname = usePathname()
   const router = useRouter()
+  const { data: session } = useSession()
   const [isUpdating, setIsUpdating] = useState(false)
   const [result, setResult] = useState<UpdateResult | null>(null)
 
@@ -96,6 +99,11 @@ export default function Header() {
     } finally {
       setIsUpdating(false)
     }
+  }
+
+  // ログイン画面ではナビゲーションも価格更新も操作できないため、ヘッダーごと出さない。
+  if (pathname === '/login') {
+    return null
   }
 
   return (
@@ -156,6 +164,23 @@ export default function Header() {
               />
               <span>{isUpdating ? '更新中...' : '価格更新'}</span>
             </Button>
+
+            {session?.user?.email && (
+              <div className="flex items-center space-x-2 border-l pl-4">
+                <span className="text-sm text-muted-foreground">
+                  {session.user.email}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  className="flex items-center space-x-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>ログアウト</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

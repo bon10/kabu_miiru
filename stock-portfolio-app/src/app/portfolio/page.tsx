@@ -1,19 +1,23 @@
 import PortfolioClient from '@/components/portfolio/portfolio-client'
+import { forwardSessionCookie } from '@/lib/server-fetch'
 
 // サーバーコンポーネントでポートフォリオデータを取得
 async function getPortfolioData() {
   try {
+    const sessionCookie = await forwardSessionCookie()
     const [compositionResponse, performanceResponse] = await Promise.all([
       fetch(
         `${process.env.NEXTAUTH_URL || 'http://localhost:3300'}/api/portfolio/composition`,
         {
           cache: 'no-store',
+          headers: sessionCookie,
         }
       ),
       fetch(
         `${process.env.NEXTAUTH_URL || 'http://localhost:3300'}/api/portfolio/performance`,
         {
           cache: 'no-store',
+          headers: sessionCookie,
         }
       ),
     ])
