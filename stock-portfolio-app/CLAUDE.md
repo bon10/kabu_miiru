@@ -62,7 +62,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **フォーム**: React Hook Form + Zod バリデーション
 - **チャート**: Recharts
 - **データフェッチング**: SWR
-- **認証**: NextAuth.js（設定済み、実装準備完了）
+- **認証**: NextAuth.js（Google OAuth・単一ユーザー・JWT セッション、ADR 0011）
 - **パッケージマネージャー**: pnpm
 
 ### 主要ディレクトリ構造
@@ -168,6 +168,8 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **リレーション**: 適切な外部キー制約とカスケード削除
 
 ### 認証・セキュリティ
-- **NextAuth.js**: 設定済み（実装準備完了）
+- **NextAuth.js**: Google OAuth のみ。`ALLOWED_LOGIN_EMAIL` に一致するメールアドレスだけ許可する単一ユーザー運用（ADR 0011）
+- **保護範囲**: `src/middleware.ts` が全画面と業務 API を保護。画面はログイン画面へリダイレクト、`/api/*` は 401 JSON。`/api/auth/*` と `/api/batch/*`（`X-API-Key` 認証）は対象外
+- **サーバー側の自己 API 呼び出し**: `forwardSessionCookie()`（`src/lib/server-fetch.ts`）でセッション Cookie を引き継ぐこと。付けないとログイン済みでも 401 になる
 - **環境変数**: 機密情報の適切な管理
 - **バリデーション**: フロントエンド・バックエンド両方での入力検証

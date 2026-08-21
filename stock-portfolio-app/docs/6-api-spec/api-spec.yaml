@@ -25,6 +25,12 @@ servers:
   - url: https://your-app.vercel.app/api
     description: 本番環境
 
+# 既定で画面のセッション Cookie を要求する（ADR 0011）。
+# 未認証の呼び出しは middleware が 401（UNAUTHORIZED）を返し、各エンドポイントには到達しない。
+# バッチだけは cron から呼ばれるため、エンドポイント側で ApiKeyAuth に上書きしている。
+security:
+  - SessionCookie: []
+
 tags:
   - name: stocks
     description: 銘柄一覧管理
@@ -1157,3 +1163,10 @@ components:
       in: header
       name: X-API-Key
       description: バッチ処理用のAPIキー
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: |
+        画面ログイン（Google OAuth）で発行される NextAuth のセッション Cookie。
+        HTTPS 環境では Cookie 名が `__Secure-next-auth.session-token` になる。
