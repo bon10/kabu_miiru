@@ -26,7 +26,7 @@ function input(over: Partial<TimelineInput> = {}): TimelineInput {
     closeMap: new Map(),
     rateMap: new Map(),
     today: day('2025-01-05'),
-    months: null,
+    range: 'all',
     ...over,
   }
 }
@@ -207,28 +207,75 @@ describe('computeTimeline', () => {
     expect(r.points[0].cumulativeDividends).toBe(300)
   })
 
-  it('months を指定すると暦月で遡った範囲だけを返す', () => {
+  it('今月を指定すると当月 1 日から今日までを返す', () => {
     const r = computeTimeline(
       input({
         transactions: [buy(1, '2024-06-01', 10, 100)],
         closeMap: closes(1, { '2024-06-01': 100 }),
         today: day('2025-01-05'),
-        months: 1,
+        range: 'thisMonth',
       }),
     )
-    // 2024-12-05 〜 2025-01-05
-    expect(r.points[0].date).toBe('2024-12-05')
+    expect(r.points[0].date).toBe('2025-01-01')
     expect(r.points[r.points.length - 1].date).toBe('2025-01-05')
   })
 
-  it('months が起点日より前に遡っても起点日から返す', () => {
+  // 先月は他の選択肢と違い、終点が今日ではなく前月末になる
+  it('先月を指定すると前月 1 日から前月末日までを返す', () => {
+    const r = computeTimeline(
+      input({
+        transactions: [buy(1, '2024-06-01', 10, 100)],
+        closeMap: closes(1, { '2024-06-01': 100 }),
+        today: day('2025-01-05'),
+        range: 'lastMonth',
+      }),
+    )
+    expect(r.points[0].date).toBe('2024-12-01')
+    expect(r.points[r.points.length - 1].date).toBe('2024-12-31')
+  })
+
+  it('期間が起点日より前に遡っても起点日から返す', () => {
     const r = computeTimeline(
       input({
         transactions: [buy(1, '2025-01-03', 10, 100)],
         closeMap: closes(1, { '2025-01-03': 100 }),
-        months: 12,
+        range: '5y',
       }),
     )
     expect(r.points[0].date).toBe('2025-01-03')
+  })
+
+  // 先月より後に買い始めた場合、その期間には描けるデータが無い
+  it('起点日が期間の終点より後なら空を返す', () => {
+    const r = computeTimeline(
+      input({
+        transactions: [buy(1, '2025-01-03', 10, 100)],
+        closeMap: closes(1, { '2025-01-03': 100 }),
+        today: day('2025-01-05'),
+        range: 'lastMonth',
+      }),
+    )
+    expect(r.points).toEqual([])
+    // 起点日そのものは返す（UI が「この期間にはデータがない」と説明できるように）
+    expect(r.baselineDate).toBe('2025-01-03')
+  })
+
+  // 期間を絞っても、累計値は起点日からの積み上げでなければならない
+  it('期間を絞っても累計配当は起点日からの累計になる', () => {
+    const r = computeTimeline(
+      input({
+        transactions: [buy(1, '2024-11-01', 10, 100)],
+        dividends: [
+          { paymentDate: day('2024-11-10'), dividendAmount: 500, currency: 'JPY' },
+          { paymentDate: day('2025-01-02'), dividendAmount: 300, currency: 'JPY' },
+        ],
+        closeMap: closes(1, { '2024-11-01': 100 }),
+        today: day('2025-01-05'),
+        range: 'thisMonth',
+      }),
+    )
+    // 期間外（11月）の 500 円も含まれた累計になる
+    expect(r.points[0].cumulativeDividends).toBe(500)
+    expect(r.points[r.points.length - 1].cumulativeDividends).toBe(800)
   })
 })

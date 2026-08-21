@@ -104,7 +104,8 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 #### ポートフォリオ分析 (`/api/portfolio`)
 - `GET /api/portfolio/composition` - ポートフォリオ構成分析（株式・企業・市場別）
 - `GET /api/portfolio/performance` - パフォーマンス指標
-- `GET /api/portfolio/timeline` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0009）
+- `GET /api/portfolio/timeline?range=1y` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0009）
+  - `range`: `thisMonth` / `lastMonth` / `1y` / `3y` / `5y` / `all`（既定 `1y`）。**先月だけ終点が今日ではなく前月末**
 
 #### バッチ (`/api/batch`) — `X-API-Key` 必須
 - `POST /api/batch/price-update` - 現在価格の一括更新

@@ -8,6 +8,7 @@ import {
   ComposedChart,
   Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { formatCurrency } from '@/lib/utils'
+import { TIMELINE_RANGES, type TimelineRange } from '@/lib/timeline-range'
 
 interface TimelinePoint {
   date: string
@@ -48,10 +50,10 @@ const fetcher = async (url: string) => {
 }
 
 export default function PortfolioTimelineChart() {
-  const [range, setRange] = useState<'12' | '24' | 'all'>('24')
+  const [range, setRange] = useState<TimelineRange>('1y')
 
   const { data, isLoading } = useSWR<TimelineResponse>(
-    `/api/portfolio/timeline?months=${range}`,
+    `/api/portfolio/timeline?range=${range}`,
     fetcher,
   )
 
@@ -59,6 +61,14 @@ export default function PortfolioTimelineChart() {
   const baselineDate = data?.data.baselineDate ?? null
   const missingPriceStocks = data?.data.missingPriceStocks ?? []
   const latest = points[points.length - 1]
+
+  // 起点日が表示範囲に入っているときだけ基準線を出す。
+  // 範囲外だと Recharts が描画しないうえ、凡例だけ残って紛らわしいため。
+  const showsBaseline = baselineDate !== null && points.some((p) => p.date === baselineDate)
+
+  // 起点日より後の期間（例：先月）を選ぶと、その範囲に描けるデータが無いことがある。
+  // 「取引履歴がない」のとは原因が違うので、メッセージを分ける。
+  const isOutOfRange = points.length === 0 && baselineDate !== null
 
   return (
     <div className="space-y-4">
@@ -69,14 +79,16 @@ export default function PortfolioTimelineChart() {
             {baselineDate && `（起点日 ${baselineDate} 以降）`}
           </p>
         </div>
-        <Select value={range} onValueChange={(v) => setRange(v as '12' | '24' | 'all')}>
+        <Select value={range} onValueChange={(v) => setRange(v as TimelineRange)}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="12">直近1年</SelectItem>
-            <SelectItem value="24">直近2年</SelectItem>
-            <SelectItem value="all">全期間</SelectItem>
+            {TIMELINE_RANGES.map((r) => (
+              <SelectItem key={r.value} value={r.value}>
+                {r.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -146,6 +158,10 @@ export default function PortfolioTimelineChart() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">読み込み中...</p>
+          ) : isOutOfRange ? (
+            <p className="text-muted-foreground">
+              この期間のデータがありません（起点日 {baselineDate} 以降が対象です）。
+            </p>
           ) : points.length === 0 ? (
             <p className="text-muted-foreground">
               取引履歴がまだないため推移を表示できません。
@@ -164,6 +180,17 @@ export default function PortfolioTimelineChart() {
                     labelFormatter={(label) => `${label}`}
                   />
                   <Legend />
+                  {/* 起点日より前は保有が不明で描いていない（ADR 0009）。
+                      そのため起点日でグラフが 0 から立ち上がるが、これは
+                      その日に資産が急増したという意味ではない。境界を明示する。 */}
+                  {showsBaseline && (
+                    <ReferenceLine
+                      x={baselineDate ?? undefined}
+                      stroke="#94a3b8"
+                      strokeDasharray="3 3"
+                      label={{ value: '起点日', position: 'insideTopLeft', fontSize: 11, fill: '#64748b' }}
+                    />
+                  )}
                   {/* 評価額と投資元本の差＝評価損益。塗りで損益の厚みを見せる */}
                   <Area
                     type="monotone"

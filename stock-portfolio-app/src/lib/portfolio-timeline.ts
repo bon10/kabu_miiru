@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { toDateKey, formatDateKey } from '@/lib/daily-price'
 import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
+import { resolveRange, type TimelineRange } from '@/lib/timeline-range'
 
 // ポートフォリオ推移の再構成（ADR 0009）。
 //
@@ -99,7 +100,7 @@ export interface TimelineInput {
   // 暦日(getTime) → USD/JPY
   rateMap: Map<number, number>
   today: Date
-  months: number | null
+  range: TimelineRange
 }
 
 // 起点日そのものが休場日（土日祝）だと、その日の終値が無く forward-fill の
@@ -118,7 +119,7 @@ export function warmupStartOf(baselineDate: Date): Date {
 // 推移を組み立てる純粋関数。DB に触れないため単体テストで振る舞いを固定できる。
 // 取引・配当は日付の昇順に並んでいることを前提とする。
 export function computeTimeline(inputData: TimelineInput): TimelineResult {
-  const { transactions, dividends, stocks, closeMap, rateMap, months } = inputData
+  const { transactions, dividends, stocks, closeMap, rateMap, range } = inputData
   const today = toDateKey(inputData.today)
 
   if (transactions.length === 0) {
@@ -130,11 +131,13 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
   // 起点日 = 最も古い取引日。初期残高 Transaction がここに置かれる（ADR 0008）。
   // これより前は保有が不明なため描画対象にしない。
   const baselineDate = toDateKey(transactions[0].transactionDate)
-  // 「直近 N ヶ月」は暦月で遡る（30 日換算だと 12 ヶ月が 360 日になり 1 年に足りない）
-  const monthsAgo = new Date(today.getFullYear(), today.getMonth() - (months ?? 0), today.getDate())
-  const rangeStart = months
-    ? new Date(Math.max(baselineDate.getTime(), monthsAgo.getTime()))
-    : baselineDate
+
+  // 表示範囲。累計値（実現損益・配当）は起点日からの積み上げが必要なので、
+  // 計算自体は常に起点日から回し、点として返すのは範囲内の日だけにする。
+  const { start: rangeStart, end: rangeEnd, isEmpty } = resolveRange(range, today, baselineDate)
+  if (isEmpty) {
+    return { points: [], baselineDate: formatDateKey(baselineDate), missingPriceStocks: [] }
+  }
 
   const warmupStart = warmupStartOf(baselineDate)
 
@@ -162,7 +165,7 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
 
   // 助走期間（warmupStart 〜 起点日の前日）は forward-fill の状態を作るためだけに
   // 回す。取引も配当もこの期間には存在しないため、集計結果には影響しない。
-  for (let day = new Date(warmupStart); day <= today; day = nextDay(day)) {
+  for (let day = new Date(warmupStart); day <= rangeEnd; day = nextDay(day)) {
     const dayKey = day.getTime()
 
     // その日のレート。未取得日は直前の値を使う
@@ -268,7 +271,7 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
 
 // DB から原資料を読み、computeTimeline に渡すだけのラッパー。
 // 計算は computeTimeline 側に集約してあるので、ここには読み出しの都合だけを置く。
-export async function buildPortfolioTimeline(months: number | null): Promise<TimelineResult> {
+export async function buildPortfolioTimeline(range: TimelineRange): Promise<TimelineResult> {
   const [transactions, dividends, stocks] = await Promise.all([
     prisma.transaction.findMany({ orderBy: { transactionDate: 'asc' } }),
     prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
@@ -304,6 +307,6 @@ export async function buildPortfolioTimeline(months: number | null): Promise<Tim
     closeMap,
     rateMap,
     today: new Date(),
-    months,
+    range,
   })
 }
