@@ -27,6 +27,7 @@
 
 - **[0-overview.md](./2-domain/0-overview.md)** - ドメインモデル概要
 - **[business-rules.md](./2-domain/business-rules.md)** - ビジネスルールと計算仕様
+- **[time-and-dates.md](./2-domain/time-and-dates.md)** - 時間と日付の扱い（「瞬間」と「暦日」の区別、暦日キー、資産推移グラフの基準時点）
 
 ### [3-architecture/](./3-architecture/)
 
