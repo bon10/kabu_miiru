@@ -5,6 +5,7 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpyByCurrency } from '@/lib/currency'
 import { calcDividendReceipt, DIVIDEND_CALC_MESSAGES } from '@/lib/dividend'
+import { dateKeyOf } from '@/lib/date-key'
 
 // 期末/中間/四半期/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
 // 表示専用ラベルで集計には使わないため任意。証券会社が期を示さず判別できない場合は未指定（NULL）で保存できる。
@@ -28,10 +29,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (year) {
+      // 年の境目は JST の暦日で判定する（ADR 0004 / 0012）
       const y = parseInt(year)
       where.paymentDate = {
-        gte: new Date(y, 0, 1),
-        lt: new Date(y + 1, 0, 1),
+        gte: dateKeyOf(y, 0, 1),
+        lt: dateKeyOf(y + 1, 0, 1),
       }
     } else if (startDate || endDate) {
       where.paymentDate = {}

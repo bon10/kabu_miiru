@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { toDateKey, formatDateKey } from '@/lib/daily-price'
+import { addDays, formatDateKey, toDateKey } from '@/lib/date-key'
 import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
 import { resolveRange, type TimelineRange } from '@/lib/timeline-range'
@@ -110,11 +110,7 @@ export interface TimelineInput {
 const WARMUP_DAYS = 14
 
 export function warmupStartOf(baselineDate: Date): Date {
-  return new Date(
-    baselineDate.getFullYear(),
-    baselineDate.getMonth(),
-    baselineDate.getDate() - WARMUP_DAYS,
-  )
+  return addDays(toDateKey(baselineDate), -WARMUP_DAYS)
 }
 
 // 推移を組み立てる純粋関数。DB に触れないため単体テストで振る舞いを固定できる。
@@ -160,9 +156,9 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
   const points: TimelinePoint[] = []
   const missingPriceStockIds = new Set<number>()
 
-  // 暦日を 1 日ずつ進める。ミリ秒加算だと夏時間のある地域で正午からずれ、
-  // 暦日 0 時をキーにしている closeMap / rateMap と一致しなくなるため日付単位で進める。
-  const nextDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+  // 暦日を 1 日ずつ進める。暦日キーは UTC 0 時に揃えてあるため、
+  // 夏時間のある地域で実行しても closeMap / rateMap のキーとずれない（ADR 0012）。
+  const nextDay = (d: Date) => addDays(d, 1)
 
   // 助走期間（warmupStart 〜 起点日の前日）は forward-fill の状態を作るためだけに
   // 回す。取引も配当もこの期間には存在しないため、集計結果には影響しない。

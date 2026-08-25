@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { toDateKey } from '@/lib/date-key'
 import { getApiSymbol } from '@/lib/utils'
 
 // 日次終値の取得・保存（ADR 0009）。
@@ -24,7 +25,7 @@ interface YahooChartResponse {
 }
 
 export interface DailyClose {
-  // サーバーローカル暦日の 0 時（DailyPrice.priceDate のキー）
+  // 暦日キー（DailyPrice.priceDate の値。ADR 0012）
   priceDate: Date
   close: number
 }
@@ -36,26 +37,10 @@ export interface DailyCloseFetchResult {
   error?: string
 }
 
-// UNIX 秒（Yahoo の timestamp）を、その日の 0 時（サーバーローカル暦日）に丸める。
+// UNIX 秒（Yahoo の timestamp）を、その時刻が属する JST 暦日のキーに丸める。
 // ExchangeRate.rateDate と同じ「暦日をキーにする」粒度に揃えるため。
 function toPriceDate(unixSeconds: number): Date {
-  const d = new Date(unixSeconds * 1000)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-}
-
-// Date を暦日 0 時に丸める。
-export function toDateKey(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-// 暦日を YYYY-MM-DD で表す。
-// toISOString は UTC に変換するため、JST の暦日 0 時が前日の 15:00Z になり
-// 日付が 1 日戻る。暦日をキーにしている以上、文字列化もローカルで行う。
-export function formatDateKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return toDateKey(new Date(unixSeconds * 1000))
 }
 
 // Yahoo Finance chart API のレスポンスから日次終値を取り出す純粋関数。

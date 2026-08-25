@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { fetchDailyCloseSeries } from '@/lib/daily-price'
+import { toDateKey } from '@/lib/date-key'
 
 type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma
 
@@ -10,11 +11,8 @@ const QUOTE = 'JPY'
 // Yahoo Finance における USD/JPY の系列シンボル。銘柄コード変換は不要。
 const USDJPY_SYMBOL = 'USDJPY=X'
 
-// サーバーローカルの暦日 0 時（= その日のレコードキー）を返す。
-// 「1 日 1 レコード」の粒度を暦日で揃えるため、時刻を切り落とす。
-function toRateDate(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
+// ExchangeRate.rateDate（レートの適用日）は暦日キーで持つ。「1 日 1 レコード」の
+// 粒度を DailyPrice.priceDate と揃えるため、丸め方も同じ toDateKey に寄せる（ADR 0012）。
 
 // Yahoo Finance の USDJPY=X から現在の USD/JPY レートを取得する。
 // 取得できなければ null を返し、呼び出し側で保存済みレートにフォールバックさせる。
@@ -50,7 +48,7 @@ async function fetchUsdJpyFromYahoo(): Promise<number | null> {
 export async function getCurrentUsdJpyRate(
   client: PrismaClientOrTx = prisma,
 ): Promise<number> {
-  const today = toRateDate(new Date())
+  const today = toDateKey(new Date())
 
   const existing = await client.exchangeRate.findUnique({
     where: { base_quote_rateDate: { base: BASE, quote: QUOTE, rateDate: today } },
@@ -115,7 +113,7 @@ export async function backfillUsdJpyRates(range: string): Promise<RateBackfillSu
     },
     select: { rateDate: true },
   })
-  const existingKeys = new Set(existing.map((e) => toRateDate(e.rateDate).getTime()))
+  const existingKeys = new Set(existing.map((e) => toDateKey(e.rateDate).getTime()))
 
   const toCreate = fetched.closes
     .filter((c) => !existingKeys.has(c.priceDate.getTime()))
@@ -143,13 +141,13 @@ export async function backfillUsdJpyRates(range: string): Promise<RateBackfillSu
 // 推移の再構成で日ごとに引くため、1 クエリで読んでメモリ上で解決する。
 export async function getUsdJpyRateMap(from: Date): Promise<Map<number, number>> {
   const rates = await prisma.exchangeRate.findMany({
-    where: { base: BASE, quote: QUOTE, rateDate: { gte: toRateDate(from) } },
+    where: { base: BASE, quote: QUOTE, rateDate: { gte: toDateKey(from) } },
     orderBy: { rateDate: 'asc' },
   })
 
   const map = new Map<number, number>()
   for (const r of rates) {
-    map.set(toRateDate(r.rateDate).getTime(), Number(r.rate))
+    map.set(toDateKey(r.rateDate).getTime(), Number(r.rate))
   }
   return map
 }

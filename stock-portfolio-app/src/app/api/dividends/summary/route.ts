@@ -3,19 +3,23 @@ import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpyByCurrency } from '@/lib/currency'
+import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 
 // 配当の年次・半期集計 API。
 // 集計はカレンダー年基準（ADR 0004）：上半期 = 1-6 月、下半期 = 7-12 月。
+// 年・半期の境目は JST の暦日で判定する（ADR 0012）。
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const yearParam = searchParams.get('year')
-    const targetYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
+    const targetYear = yearParam
+      ? parseInt(yearParam)
+      : dateKeyParts(toDateKey(new Date())).year
 
-    const yearStart = new Date(targetYear, 0, 1)
-    const yearEnd = new Date(targetYear + 1, 0, 1)
-    const halfYearBoundary = new Date(targetYear, 6, 1)
-    const prevYearStart = new Date(targetYear - 1, 0, 1)
+    const yearStart = dateKeyOf(targetYear, 0, 1)
+    const yearEnd = dateKeyOf(targetYear + 1, 0, 1)
+    const halfYearBoundary = dateKeyOf(targetYear, 6, 1)
+    const prevYearStart = dateKeyOf(targetYear - 1, 0, 1)
 
     const [thisYear, prevYear] = await Promise.all([
       prisma.dividendHistory.findMany({

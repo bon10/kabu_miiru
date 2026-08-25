@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeTimeline, type TimelineInput } from '@/lib/portfolio-timeline'
+import { dateKeyOf } from '@/lib/date-key'
 
 // ポートフォリオ推移の再構成（ADR 0009）。
 // DB を伴わない純粋関数として切り出し、次を固定する：
@@ -8,10 +9,10 @@ import { computeTimeline, type TimelineInput } from '@/lib/portfolio-timeline'
 //   - 起点日より前は返さない
 //   - 評価額と投資元本は同一レートで換算する（為替損益を出さない）
 
-// 暦日 0 時（closeMap / rateMap のキーと同じ粒度）
+// 暦日キー（closeMap / rateMap のキーと同じ粒度。ADR 0012）
 const day = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
+  return dateKeyOf(y, m - 1, d)
 }
 const key = (iso: string) => day(iso).getTime()
 

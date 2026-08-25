@@ -4,13 +4,15 @@ import {
   planInitialBalance,
   replayShares,
 } from '@/lib/initial-balance'
+import { dateKeyOf, formatDateKey } from '@/lib/date-key'
 
 // 初期残高 Transaction の生成判断（ADR 0008）。
 // 「何株ぶんを、いつの日付で作るか」を DB 非依存の純粋関数として固定する。
 
+// 暦日キー（ADR 0012）。ローカル暦日で組み立てると実行環境の TZ に依存する。
 const day = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
+  return dateKeyOf(y, m - 1, d)
 }
 
 const buy = (shares: number, date = '2025-01-01') => ({
@@ -22,6 +24,14 @@ const sell = (shares: number, date = '2025-02-01') => ({
   transactionType: 'SELL' as const,
   shares,
   transactionDate: day(date),
+})
+
+describe('DEFAULT_BASELINE_DATE', () => {
+  // サーバーの TZ で意味が変わると、既存取引との前後比較が環境ごとにずれる（ADR 0012）
+  it('TSV 取り込み日（2025-09-10）の暦日キーである', () => {
+    expect(formatDateKey(DEFAULT_BASELINE_DATE)).toBe('2025-09-10')
+    expect(DEFAULT_BASELINE_DATE.toISOString()).toBe('2025-09-10T00:00:00.000Z')
+  })
 })
 
 describe('replayShares', () => {
