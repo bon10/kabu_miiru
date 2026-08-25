@@ -813,14 +813,21 @@ components:
         dividendAmount:
           type: number
           format: decimal
+        firstPurchaseDate:
+          type: string
+          format: date
+          nullable: true
+          description: 初回購入日（最初の BUY の取引日。買い増ししても動かない）
         purchaseDate:
           type: string
           format: date
           nullable: true
+          description: 最終購入日（最後の BUY の取引日）
         saleDate:
           type: string
           format: date
           nullable: true
+          description: 最終売却日（最後の SELL の取引日）
         realizedProfitLoss:
           type: number
           format: decimal

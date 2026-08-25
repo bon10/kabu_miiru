@@ -44,6 +44,11 @@ export interface ReplayResult {
   shares: number
   costBasis: number
   realizedProfitLoss: number
+  // 最初の BUY の取引日。全株売却して買い直した場合も遡らず、履歴上の最初の購入を指す。
+  // 初期残高 Transaction（ADR 0008）を持つ銘柄では、その起点日が初回購入日になる。
+  // 起点日は購入日が判明していない銘柄では TSV 取り込み日の推定値であり、
+  // 実際の初回購入日はそれより前でありうる。
+  firstPurchaseDate: Date | null
   lastPurchaseDate: Date | null
   lastSaleDate: Date | null
   orphanedSells: OrphanedSell[]
@@ -55,6 +60,7 @@ export function replayTransactions(transactions: ReplayTransaction[]): ReplayRes
   let shares = 0
   let costBasis = 0
   let realizedProfitLoss = 0
+  let firstPurchaseDate: Date | null = null
   let lastPurchaseDate: Date | null = null
   let lastSaleDate: Date | null = null
   const orphanedSells: OrphanedSell[] = []
@@ -63,6 +69,7 @@ export function replayTransactions(transactions: ReplayTransaction[]): ReplayRes
     if (tx.transactionType === 'BUY') {
       costBasis += tx.shares * tx.pricePerShare + tx.fee
       shares += tx.shares
+      firstPurchaseDate ??= tx.transactionDate
       lastPurchaseDate = tx.transactionDate
     } else if (tx.transactionType === 'SELL') {
       if (shares <= 0) {
@@ -87,7 +94,15 @@ export function replayTransactions(transactions: ReplayTransaction[]): ReplayRes
     }
   }
 
-  return { shares, costBasis, realizedProfitLoss, lastPurchaseDate, lastSaleDate, orphanedSells }
+  return {
+    shares,
+    costBasis,
+    realizedProfitLoss,
+    firstPurchaseDate,
+    lastPurchaseDate,
+    lastSaleDate,
+    orphanedSells,
+  }
 }
 
 // 保有株数ゼロの時点に SELL が置かれている状態を表すエラー。
@@ -136,17 +151,24 @@ export async function recalculateStockAggregates(
 
   if (!stock) return { orphanedSells: [] }
 
-  const { shares, costBasis, realizedProfitLoss, lastPurchaseDate, lastSaleDate, orphanedSells } =
-    replayTransactions(
-      transactions.map((tx) => ({
-        id: tx.id,
-        transactionType: tx.transactionType,
-        shares: Number(tx.shares),
-        pricePerShare: Number(tx.pricePerShare),
-        fee: Number(tx.fee),
-        transactionDate: tx.transactionDate,
-      })),
-    )
+  const {
+    shares,
+    costBasis,
+    realizedProfitLoss,
+    firstPurchaseDate,
+    lastPurchaseDate,
+    lastSaleDate,
+    orphanedSells,
+  } = replayTransactions(
+    transactions.map((tx) => ({
+      id: tx.id,
+      transactionType: tx.transactionType,
+      shares: Number(tx.shares),
+      pricePerShare: Number(tx.pricePerShare),
+      fee: Number(tx.fee),
+      transactionDate: tx.transactionDate,
+    })),
+  )
 
   const avgAcquisitionPrice = shares > 0 ? costBasis / shares : 0
   const investmentAmount = costBasis
@@ -164,6 +186,7 @@ export async function recalculateStockAggregates(
       profitLoss: unrealizedProfitLoss,
       profitLossRate,
       realizedProfitLoss,
+      firstPurchaseDate: firstPurchaseDate ?? null,
       purchaseDate: lastPurchaseDate ?? null,
       saleDate: lastSaleDate ?? null,
     },

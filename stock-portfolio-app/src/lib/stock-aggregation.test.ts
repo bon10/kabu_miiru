@@ -103,20 +103,70 @@ describe('replayTransactions', () => {
     expect(r.costBasis).toBe(100000)
   })
 
-  it('最終購入日・最終売却日を返す', () => {
+  it('初回購入日・最終購入日・最終売却日を返す', () => {
     const r = replayTransactions([
       buy({ id: 1, shares: 100, pricePerShare: 1000, transactionDate: d('2025-01-01') }),
       buy({ id: 2, shares: 50, pricePerShare: 1100, transactionDate: d('2025-04-01') }),
       sell({ id: 3, shares: 10, pricePerShare: 1200, transactionDate: d('2025-05-01') }),
     ])
+    expect(r.firstPurchaseDate).toEqual(d('2025-01-01'))
     expect(r.lastPurchaseDate).toEqual(d('2025-04-01'))
     expect(r.lastSaleDate).toEqual(d('2025-05-01'))
   })
 
-  it('売買が無ければ最終購入日・最終売却日は null', () => {
+  it('買い増ししても初回購入日は最初の BUY のまま動かない', () => {
+    const first = buy({ id: 1, shares: 100, pricePerShare: 1000, transactionDate: d('2025-01-01') })
+    const additional = buy({
+      id: 2,
+      shares: 50,
+      pricePerShare: 1100,
+      transactionDate: d('2025-04-01'),
+    })
+    expect(replayTransactions([first]).firstPurchaseDate).toEqual(d('2025-01-01'))
+    expect(replayTransactions([first, additional]).firstPurchaseDate).toEqual(d('2025-01-01'))
+  })
+
+  // 全株売却で保有株数・取得原価はゼロに戻るが、初回購入日は履歴上の最初の購入を指し続ける。
+  it('全株売却して買い直しても初回購入日は遡らない', () => {
+    const r = replayTransactions([
+      buy({ id: 1, shares: 100, pricePerShare: 1000, transactionDate: d('2025-01-01') }),
+      sell({ id: 2, shares: 100, pricePerShare: 1200, transactionDate: d('2025-02-01') }),
+      buy({ id: 3, shares: 100, pricePerShare: 900, transactionDate: d('2025-03-01') }),
+    ])
+    expect(r.firstPurchaseDate).toEqual(d('2025-01-01'))
+    expect(r.lastPurchaseDate).toEqual(d('2025-03-01'))
+  })
+
+  // 初期残高 Transaction（ADR 0008）は既存のどの取引よりも前に置かれる BUY なので、
+  // それを持つ銘柄の初回購入日は起点日になる。起点日は購入日が判明していない銘柄では
+  // TSV 取り込み日の推定値であり、実際の初回購入日とは限らない。
+  it('初期残高が最初の BUY なら初回購入日はその起点日になる', () => {
+    const r = replayTransactions([
+      buy({ id: 1, shares: 30, pricePerShare: 1000, transactionDate: d('2025-09-10') }),
+      buy({ id: 2, shares: 10, pricePerShare: 1300, transactionDate: d('2025-11-20') }),
+    ])
+    expect(r.firstPurchaseDate).toEqual(d('2025-09-10'))
+  })
+
+  // 孤立した SELL は集計から外れるため、初回購入日は SELL より後の BUY になる。
+  it('先行する BUY が無い SELL は初回購入日に影響しない', () => {
+    const r = replayTransactions([
+      sell({ id: 7, shares: 5, pricePerShare: 1200, transactionDate: d('2025-01-01') }),
+      buy({ id: 1, shares: 100, pricePerShare: 1000, transactionDate: d('2025-03-01') }),
+    ])
+    expect(r.firstPurchaseDate).toEqual(d('2025-03-01'))
+  })
+
+  it('売買が無ければ初回購入日・最終購入日・最終売却日は null', () => {
     const r = replayTransactions([])
+    expect(r.firstPurchaseDate).toBeNull()
     expect(r.lastPurchaseDate).toBeNull()
     expect(r.lastSaleDate).toBeNull()
+  })
+
+  it('売却のみなら初回購入日は null のまま', () => {
+    const r = replayTransactions([sell({ id: 7, shares: 5, pricePerShare: 1200 })])
+    expect(r.firstPurchaseDate).toBeNull()
   })
 
   // 同一取引日の BUY と SELL は、渡された配列の順序どおりに処理される。

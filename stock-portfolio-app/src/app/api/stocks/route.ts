@@ -112,6 +112,9 @@ export async function POST(request: NextRequest) {
         investmentAmount: body.investmentAmount || 0,
         dividendPerShare: body.dividendPerShare || 0,
         dividendYield: body.dividendYield || 0,
+        // 銘柄登録時点では購入日は 1 つしか受け取らない。以後の取引登録で
+        // recalculateStockAggregates が Transaction から初回・最終を上書きする。
+        firstPurchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         targetPrice: body.targetPrice,
         marketSector: body.marketSector,
