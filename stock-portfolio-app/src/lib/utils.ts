@@ -50,6 +50,12 @@ export const AVG_ACQUISITION_PRICE_NOTE =
   '投資額は手数料を含む取得原価そのものを表示しているため、' +
   '平均取得単価 × 保有株数 と一致しないことがあります。'
 
+// 初回購入日が初期残高の起点日だった場合に、日付の近くに添える説明文（ADR 0008）。
+// 起点日は購入日が判明していない銘柄では TSV 一括取り込み日の推定値であり、
+// 実際の初回購入日はそれより前でありうる。
+export const INITIAL_BALANCE_BASELINE_NOTE =
+  '移行時の初期残高の起点日です。実際にはこれより前から保有していた可能性があります。'
+
 // 金額を指定通貨（JPY / USD）建てで表示する。配当のように受取通貨を明示的に
 // 持つ値を、その通貨のまま見せるのに使う（円換算はしない）。
 export function formatMoney(value: number, currency: string): string {

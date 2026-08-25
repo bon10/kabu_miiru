@@ -34,8 +34,14 @@ model Stock {
   dividendAmount        Decimal  @default(0) @db.Decimal(15,2)  // 配当金額
 
   // 取引情報
-  purchaseDate          DateTime? // 購入日
-  saleDate              DateTime? // 売却日
+  // 購入日は初回・最終の 2 つを持つ。どちらも Transaction からの再計算で書かれる
+  // （Source of truth は Transaction：ADR 0003）。
+  // firstPurchaseDate は最初の BUY の取引日で、買い増ししても動かない。初期残高
+  // Transaction を持つ銘柄ではその起点日が入る（ADR 0008。購入日が判明していない
+  // 銘柄では TSV 取り込み日の推定値）。
+  firstPurchaseDate     DateTime? // 初回購入日
+  purchaseDate          DateTime? // 最終購入日
+  saleDate              DateTime? // 最終売却日
   realizedProfitLoss    Decimal? @db.Decimal(15,2) // 実現損益
   targetPrice           Decimal? @db.Decimal(15,4) // 目標価格
   marketSector          String?   // 市場・セクター

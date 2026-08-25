@@ -120,6 +120,10 @@ export async function POST(request: NextRequest) {
           dividendPerShare: parseDecimal(dividendPerShare),
           dividendYield: parseDecimal(dividendYield),
           dividendAmount: parseDecimal(dividendAmount),
+          // TSV は購入日を 1 列しか持たない。取引履歴を伴わないインポートでは
+          // 初回・最終を区別できないため、同じ日付を両方に入れる。取引が登録されれば
+          // recalculateStockAggregates が Transaction から両方を上書きする。
+          firstPurchaseDate: parsePurchaseDate,
           purchaseDate: parsePurchaseDate,
           saleDate: parseSaleDate,
           realizedProfitLoss:

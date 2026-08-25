@@ -35,6 +35,7 @@ import {
   formatDateTime,
   formatAvgAcquisitionPrice,
   AVG_ACQUISITION_PRICE_NOTE,
+  INITIAL_BALANCE_BASELINE_NOTE,
   cn,
 } from '@/lib/utils'
 import { requestPriceUpdate } from '@/lib/price-update'
@@ -47,6 +48,8 @@ interface Transaction {
   totalAmount: number
   fee: number
   transactionDate: string
+  // 移行データ由来の保有を表す取引か（ADR 0008）。取引日が起点日であることを示す
+  isInitialBalance?: boolean
   memo?: string
 }
 
@@ -81,6 +84,7 @@ interface StockDetail {
   dividendPerShare: number
   dividendYield: number
   dividendAmount: number
+  firstPurchaseDate?: string
   purchaseDate?: string
   saleDate?: string
   targetPrice?: number
@@ -119,6 +123,20 @@ export default function StockDetailPage() {
             },
           ]
         : [],
+    [stock]
+  )
+
+  // 初回購入日が初期残高 Transaction の起点日かどうか（ADR 0008）。
+  // 購入日が判明していない銘柄の起点日は TSV 一括取り込み日の推定値で、
+  // 実際の初回購入日はそれより前でありうる。そのまま「初回購入日」として
+  // 見せると事実より後の日付を断定してしまうため、注記を添える判断に使う。
+  const firstPurchaseFromInitialBalance = useMemo(
+    () =>
+      !!stock?.firstPurchaseDate &&
+      stock.transactions.some(
+        (tx) =>
+          tx.isInitialBalance && tx.transactionDate === stock.firstPurchaseDate
+      ),
     [stock]
   )
 
@@ -327,7 +345,10 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">平均取得単価</p>
                 <p className="text-2xl font-bold">
-                  {formatAvgAcquisitionPrice(stock.avgAcquisitionPrice, stock.market)}
+                  {formatAvgAcquisitionPrice(
+                    stock.avgAcquisitionPrice,
+                    stock.market
+                  )}
                 </p>
               </div>
               <div>
@@ -409,15 +430,28 @@ export default function StockDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {stock.firstPurchaseDate && (
+              <div>
+                <p className="text-sm text-muted-foreground">初回購入日</p>
+                <p className="font-medium">
+                  {formatDate(stock.firstPurchaseDate)}
+                </p>
+                {firstPurchaseFromInitialBalance && (
+                  <p className="text-xs text-muted-foreground">
+                    {INITIAL_BALANCE_BASELINE_NOTE}
+                  </p>
+                )}
+              </div>
+            )}
             {stock.purchaseDate && (
               <div>
-                <p className="text-sm text-muted-foreground">購入日</p>
+                <p className="text-sm text-muted-foreground">最終購入日</p>
                 <p className="font-medium">{formatDate(stock.purchaseDate)}</p>
               </div>
             )}
             {stock.saleDate && (
               <div>
-                <p className="text-sm text-muted-foreground">売却日</p>
+                <p className="text-sm text-muted-foreground">最終売却日</p>
                 <p className="font-medium">{formatDate(stock.saleDate)}</p>
               </div>
             )}
