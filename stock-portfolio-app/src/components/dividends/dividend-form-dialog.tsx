@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { todayInput } from '@/lib/date-key'
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,7 @@ export function DividendFormDialog({
   // 通貨をユーザーが手動で選び直したか。選び直した後に銘柄を変えても勝手に上書きしない。
   const [currencyTouched, setCurrencyTouched] = useState(false)
   const [paymentDate, setPaymentDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
+    todayInput()
   )
   // 未指定は DIVIDEND_TYPE_UNSPECIFIED。Radix Select は空文字の値を持てないためセンチネルで表す。
   const [dividendType, setDividendType] = useState<
@@ -95,7 +96,7 @@ export function DividendFormDialog({
       )?.market
       setCurrency(defaultCurrencyForMarket(initialMarket))
       setCurrencyTouched(false)
-      setPaymentDate(new Date().toISOString().slice(0, 10))
+      setPaymentDate(todayInput())
       setDividendType(DIVIDEND_TYPE_UNSPECIFIED)
       setError(null)
     }
