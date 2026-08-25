@@ -52,6 +52,21 @@ export function jstMinutesOfDay(instant: Date): number {
   return Math.floor((instant.getTime() + JST_OFFSET_MS - toDateKey(instant).getTime()) / 60_000)
 }
 
+// 日本時間の「今日」を YYYY-MM-DD で返す。<input type="date"> の初期値に使う。
+// new Date().toISOString().slice(0, 10) だと世界標準時の今日になり、
+// 日本時間の 0〜9 時のあいだ前日が初期値として入ってしまう。
+export function todayInput(): string {
+  return formatDateKey(new Date())
+}
+
+// 暦日キーが属する週の月曜日を返す。週単位でまとめるときのキーに使う。
+// 暦日キーは UTC 0 時に揃えてあるため、1970-01-01（木曜）からの経過日数で
+// 曜日が決まる。
+export function startOfWeekKey(key: Date): Date {
+  const epochDay = Math.floor(key.getTime() / DAY_MS)
+  return addDays(key, -((epochDay + 3) % 7))
+}
+
 // 暦日キーを days 日ぶん進める（負数で遡る）。
 // 暦日キーは UTC 0 時に揃えてあり UTC には夏時間が無いため、
 // 日数の加算だけで暦日が 1 日ずつ動く。

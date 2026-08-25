@@ -70,6 +70,8 @@ Vercel Cron は **GET** で呼び、プロジェクトに `CRON_SECRET` が設�
 
 銘柄・取引・配当・証券会社・価格履歴・アプリ設定は [migrate-to-remote-db.js](../../scripts/migrate-to-remote-db.js) で id を保ったまま運ぶ。
 
+暦日を表す列（`transactionDate` / `paymentDate` / `firstPurchaseDate` / `purchaseDate` / `saleDate`）は `DATE` 型で時刻を持たないため、そのまま運べる。`DATE` 型へ移す前のダンプを移送元にした場合に備えて、移送スクリプトは時刻の正規化も行う。
+
 **日次終値（27,202 件）と日次 USD/JPY レート（525 件）は運ばず、移送後に `range=2y` で取り直す。** Yahoo Finance から再取得できるうえ、ローカルの既存レコードは日付が 1 日前にずれているため（ADR 0012）、運び込むと本番にずれを持ち込むことになる。
 
 ### タイムゾーン

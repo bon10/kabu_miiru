@@ -23,13 +23,21 @@ import { PrismaClient } from '@prisma/client'
 //   同上 node scripts/migrate-to-remote-db.js --apply   # 実際に書き込む
 
 // 移送するテーブル。親から子の順に並べる（外部キーの参照先を先に作るため）。
+//
+// dateColumns には暦日を表す列を挙げる。これらは DATE 型なので時刻を持たないが、
+// 型を変える前に取ったダンプから移送する場合に備えて、移送時にも時刻を揃える
+// （後述の normalizeDateColumns。揃っていれば何もしない）。
 const TABLES = [
-  { model: 'broker', label: '証券会社' },
-  { model: 'stock', label: '銘柄' },
-  { model: 'transaction', label: '取引' },
-  { model: 'dividendHistory', label: '配当' },
-  { model: 'priceHistory', label: '価格履歴' },
-  { model: 'setting', label: 'アプリ設定' },
+  { model: 'broker', label: '証券会社', dateColumns: [] },
+  {
+    model: 'stock',
+    label: '銘柄',
+    dateColumns: ['firstPurchaseDate', 'purchaseDate', 'saleDate'],
+  },
+  { model: 'transaction', label: '取引', dateColumns: ['transactionDate'] },
+  { model: 'dividendHistory', label: '配当', dateColumns: ['paymentDate'] },
+  { model: 'priceHistory', label: '価格履歴', dateColumns: [] },
+  { model: 'setting', label: 'アプリ設定', dateColumns: [] },
 ]
 
 // 移送せず、移送後にバッチで入れ直すテーブル。
@@ -50,6 +58,36 @@ function requireEnv(name) {
 function describeUrl(url) {
   const { host, pathname } = new URL(url)
   return `${host}${pathname}`
+}
+
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// 時刻を、その時刻が属する日本時間の暦日（世界標準時 0 時）に丸める。
+// src/lib/date-key.ts の toDateKey と同じ計算。このスクリプトは素の Node で
+// 動かすため TypeScript の実装を import できず、ここに再掲している。
+function toDateKey(date) {
+  return new Date(Math.floor((date.getTime() + JST_OFFSET_MS) / DAY_MS) * DAY_MS)
+}
+
+// 暦日カラムの時刻を揃える。
+//
+// これらの列は DATE 型なので、通常は既に世界標準時 0 時で返り、この関数は
+// 何もしない。DATE 型へ移す前のデータを移送元にした場合だけ、時刻を揃える。
+// toDateKey を通した結果は変換の前後で同じなので、暦日は変わらない。
+function normalizeDateColumns(row, columns) {
+  let changed = false
+  const normalized = { ...row }
+  for (const column of columns) {
+    const value = row[column]
+    if (!(value instanceof Date)) continue
+    const key = toDateKey(value)
+    if (key.getTime() !== value.getTime()) {
+      normalized[column] = key
+      changed = true
+    }
+  }
+  return { row: normalized, changed }
 }
 
 async function migrate(apply, force) {
@@ -78,21 +116,29 @@ async function migrate(apply, force) {
       )
     }
 
-    for (const { model, label } of TABLES) {
+    for (const { model, label, dateColumns } of TABLES) {
       const rows = await source[model].findMany()
       if (rows.length === 0) {
         console.log(`${label}（${model}）: 0 件 — 移送なし`)
         continue
       }
 
+      let normalizedCount = 0
+      const data = rows.map((row) => {
+        const { row: normalized, changed } = normalizeDateColumns(row, dateColumns)
+        if (changed) normalizedCount += 1
+        return normalized
+      })
+      const note = normalizedCount > 0 ? `（うち ${normalizedCount} 件は日付の時刻を揃える）` : ''
+
       if (!apply) {
-        console.log(`${label}（${model}）: ${rows.length} 件を移送予定`)
+        console.log(`${label}（${model}）: ${rows.length} 件を移送予定${note}`)
         continue
       }
 
       // 既に同じ id がある行は飛ばす。--force での再実行を安全にするため。
-      const created = await target[model].createMany({ data: rows, skipDuplicates: true })
-      console.log(`${label}（${model}）: ${rows.length} 件中 ${created.count} 件を移送`)
+      const created = await target[model].createMany({ data, skipDuplicates: true })
+      console.log(`${label}（${model}）: ${rows.length} 件中 ${created.count} 件を移送${note}`)
     }
 
     console.log('')

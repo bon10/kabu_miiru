@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { toDateKey } from '@/lib/date-key'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import {
   assertNoOrphanedSells,
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
           pricePerShare,
           totalAmount,
           fee: body.fee ?? 0,
-          transactionDate: new Date(body.transactionDate),
+          transactionDate: toDateKey(new Date(body.transactionDate)),
           memo: body.memo,
         },
         include: {

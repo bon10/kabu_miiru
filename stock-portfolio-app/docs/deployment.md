@@ -56,6 +56,10 @@ node scripts/migrate-to-remote-db.js --apply
 
 運ぶのは 証券会社 / 銘柄 / 取引 / 配当 / 価格履歴 / アプリ設定 の 6 テーブル。`id` を保ったまま入れるので `Transaction.stockId` などの参照はそのまま使える。移送先に既に銘柄があると止まる（`--force` で続行できるが、既存 id は上書きせず飛ばす）。
 
+暦日を表す列（`transactionDate` / `paymentDate` / `firstPurchaseDate` / `purchaseDate` / `saleDate`）は `DATE` 型なので時刻を持たず、そのまま運べば揃ったまま入る。
+
+> `DATE` 型へ移す前に取ったダンプを移送元にする場合に備えて、移送スクリプトは時刻の正規化も行う（揃っていれば何もしない）。揃えた件数は実行時に表示される。
+
 ### `$transaction` が動くか確かめる（TiDB での動作は未検証）
 
 本アプリは取引の登録・編集で `$transaction` を使っている。TiDB でこれが通らないと、保有株数と平均取得単価が不整合なまま確定しうる。**アプリを公開する前に**、`$transaction` を使う[初期残高バッチ](../src/lib/initial-balance.ts)を dry-run して確認する。

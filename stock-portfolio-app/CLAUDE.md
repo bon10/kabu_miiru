@@ -171,11 +171,11 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **レート制限**: API呼び出し制限の考慮
 
 ### 日付の扱い（ADR 0012）
-- **暦日は必ず JST で判定する**。本番（Vercel）の関数は UTC で動き、`TZ` は Vercel の予約環境変数なので設定できない
-- 日次データの日付は**暦日キー**（JST の暦日を UTC 0 時の `Date` で表した値）で扱う。生成・比較・書式化は `src/lib/date-key.ts` に集約
-  - `toDateKey` / `formatDateKey` / `dateKeyOf` / `dateKeyParts` / `addDays` / `jstMinutesOfDay`
-- **`new Date(y, m, d)` を書かない**。サーバーのローカル時刻に依存するうえ、JST 0 時を `@db.Date` に保存すると Prisma が UTC の日付部分を切り出すため日付が 1 日戻る。代わりに `dateKeyOf(y, m, d)` を使う
-- 「今日」「今月」「今年」の境目、東証の立会時間の判定も同様に JST で行う
+**日付を触る前に `docs/2-domain/time-and-dates.md` を読むこと。** 要点だけ再掲する。
+
+- **`new Date(y, m, d)` を書かない**。サーバーのローカル時刻に依存するうえ、JST 0 時を `@db.Date` に保存すると Prisma が UTC 側の日付を切り出すため 1 日戻る。代わりに `src/lib/date-key.ts` の `dateKeyOf(y, m, d)` を使う
+- 暦日（`DailyPrice.priceDate` など）は**暦日キー**で扱う。生成・比較・書式化は `date-key.ts` に集約：`toDateKey` / `formatDateKey` / `dateKeyOf` / `dateKeyParts` / `addDays` / `jstMinutesOfDay`
+- 「今日」「今月」「今年」の境目、東証の立会時間の判定も JST で行う
 - 日付を扱うテストは `dateKeyOf` か Z 付き ISO 文字列で組み立てる（ローカル暦日で書くと実行環境の TZ に依存する）
 
 ### データベース設計

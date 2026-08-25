@@ -5,7 +5,9 @@ import {
   dateKeyParts,
   formatDateKey,
   jstMinutesOfDay,
+  startOfWeekKey,
   toDateKey,
+  todayInput,
 } from '@/lib/date-key'
 
 // 暦日キー（ADR 0012）。
@@ -96,6 +98,48 @@ describe('dateKeyParts', () => {
     const key = toDateKey(new Date('2026-08-13T15:00:00Z'))
     const { year, month, day } = dateKeyParts(key)
     expect(dateKeyOf(year, month, day).getTime()).toBe(key.getTime())
+  })
+})
+
+describe('todayInput', () => {
+  // <input type="date"> の初期値に使う。日本時間の「今日」でなければ、
+  // 日本の朝 0〜9 時に前日が初期値として入ってしまう。
+  it('日本時間の今日を YYYY-MM-DD で返す', () => {
+    expect(todayInput()).toBe(formatDateKey(toDateKey(new Date())))
+  })
+
+  it('input[type=date] が受け付ける形式になっている', () => {
+    expect(todayInput()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+describe('startOfWeekKey', () => {
+  it('月曜はその日自身を返す', () => {
+    // 2026-01-05 は月曜
+    expect(formatDateKey(startOfWeekKey(dateKeyOf(2026, 0, 5)))).toBe('2026-01-05')
+  })
+
+  it('火曜はその週の月曜を返す', () => {
+    // 2026-01-06 は火曜
+    expect(formatDateKey(startOfWeekKey(dateKeyOf(2026, 0, 6)))).toBe('2026-01-05')
+  })
+
+  it('日曜は同じ週の月曜を返す（週は月曜始まり）', () => {
+    // 2026-01-11 は日曜
+    expect(formatDateKey(startOfWeekKey(dateKeyOf(2026, 0, 11)))).toBe('2026-01-05')
+  })
+
+  it('年をまたぐ週も同じ月曜を返す', () => {
+    // 2026-01-01 は木曜。その週の月曜は前年の 2025-12-29
+    expect(formatDateKey(startOfWeekKey(dateKeyOf(2026, 0, 1)))).toBe('2025-12-29')
+  })
+
+  // 週キーとして使うため、別の月の同じ日が同じ週にまとまってはいけない
+  it('月が違えば別の週になる', () => {
+    const jan = formatDateKey(startOfWeekKey(dateKeyOf(2026, 0, 5)))
+    const feb = formatDateKey(startOfWeekKey(dateKeyOf(2026, 1, 3)))
+    const mar = formatDateKey(startOfWeekKey(dateKeyOf(2026, 2, 4)))
+    expect(new Set([jan, feb, mar]).size).toBe(3)
   })
 })
 
