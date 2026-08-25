@@ -48,7 +48,8 @@ Accepted (2026-08-22)
 
 - **マルチユーザー化したときの構成**。その時点で PrismaAdapter + DB セッションへ切り替える想定だが、データのユーザー紐付け（Stock / Transaction への userId 追加）をどう移行するかは決めていない
 - **セッションの有効期限**。NextAuth の既定（30 日）のまま。単一ユーザー・自分の端末という前提で、短縮する根拠が現時点で無い
-- **`/api/batch/*` の認証方式**。`X-API-Key` のまま据え置き。Vercel Cron 対応（`CRON_SECRET`）は Issue #10 の範囲
+- ~~**`/api/batch/*` の認証方式**。`X-API-Key` のまま据え置き。Vercel Cron 対応（`CRON_SECRET`）は Issue #10 の範囲~~
+  → **[ADR 0013](0013-deploy-vercel-tidb.md) で決定済み（2026-08-26）**。手動実行（POST）は `X-API-Key` のまま、Vercel Cron からの定期実行（GET）は `CRON_SECRET` で認証する。`/api/batch/*` を middleware の保護対象外にする本 ADR の判断は変わらない
 - **監査ログ**。誰がいつログインしたかは記録しない
 
 ## Consequences
@@ -74,4 +75,5 @@ Accepted (2026-08-22)
 ## 関連
 
 - [ADR 0009 ポートフォリオ推移は日次終値から再構成する](0009-portfolio-timeline-from-daily-close.md)（`/api/batch/*` を保護対象外にする根拠となるバッチ）
-- Issue #10 アプリをデプロイして cron を動かせるようにする（本 ADR の親。`NEXTAUTH_URL` の本番切り替えと `CRON_SECRET` はそちら）
+- [ADR 0013 本番は Vercel + TiDB Cloud Starter に置き、日次バッチは Vercel Cron で回す](0013-deploy-vercel-tidb.md)（`NEXTAUTH_URL` の本番切り替えと `CRON_SECRET` を決めた）
+- Issue #10 アプリをデプロイして cron を動かせるようにする（本 ADR の親）

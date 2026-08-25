@@ -727,6 +727,72 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  # バッチ処理（日次終値・日次USD/JPYレートの取り込み）
+  /batch/daily-close:
+    get:
+      tags: [prices]
+      summary: 日次終値の取り込み（定期実行）
+      description: |
+        Vercel Cron からの定期実行用（ADR 0013）。1 日 1 回、JST 08:00〜08:59 に呼ばれる。
+        Vercel が `Authorization: Bearer $CRON_SECRET` を付けて GET で叩く。
+        `CRON_SECRET` が未設定の場合は常に 401 を返す。
+      security:
+        - CronSecretAuth: []
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max]
+            default: 1mo
+          description: 取り込む期間。既定の 1mo なら数日止まっていても取り戻せる
+      responses:
+        '200':
+          description: バッチ処理成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyCloseBatchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [prices]
+      summary: 日次終値の取り込み（手動実行）
+      description: |
+        初回バックフィル（`range=2y` など）や cron 失敗後の取り戻しに使う（ADR 0009）。
+        既存レコードは上書きしないため、重複実行しても安全。
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                range:
+                  type: string
+                  enum: [5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max]
+                  default: 1mo
+      responses:
+        '200':
+          description: バッチ処理成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyCloseBatchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   schemas:
     ApiResponse:
@@ -756,6 +822,62 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    DailyCloseBatchResult:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                executedAt:
+                  type: string
+                  format: date-time
+                range:
+                  type: string
+                exchangeRate:
+                  type: object
+                  description: 日次 USD/JPY レートの取り込み結果
+                  properties:
+                    range:
+                      type: string
+                    success:
+                      type: boolean
+                    savedCount:
+                      type: integer
+                    error:
+                      type: string
+                dailyPrice:
+                  type: object
+                  description: 日次終値の取り込み結果
+                  properties:
+                    targetCount:
+                      type: integer
+                      description: 対象銘柄数（保有株数 > 0）
+                    successCount:
+                      type: integer
+                    failedCount:
+                      type: integer
+                    savedCount:
+                      type: integer
+                      description: 新規保存したレコード数（既存日は上書きしない）
+                    failures:
+                      type: array
+                      description: 失敗した銘柄のみ。成功分は応答が膨らむため含めない
+                      items:
+                        type: object
+                        properties:
+                          stockId:
+                            type: integer
+                          code:
+                            type: string
+                          success:
+                            type: boolean
+                          savedCount:
+                            type: integer
+                          error:
+                            type: string
 
     CompositionItem:
       type: object
@@ -1169,7 +1291,13 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: バッチ処理用のAPIキー
+      description: バッチ処理を手動実行するときのAPIキー
+    CronSecretAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Vercel Cron が付ける `Authorization: Bearer $CRON_SECRET`（ADR 0013）。
+        Vercel のプロジェクト環境変数 `CRON_SECRET` の値と照合する。
     SessionCookie:
       type: apiKey
       in: cookie
