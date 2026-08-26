@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
+import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +12,11 @@ export async function GET(request: NextRequest) {
 
     let dateFilter: Record<string, Date> = {}
 
-    const now = new Date()
+    // 「今日」「今月」「今年」の境目は、サーバーのローカル時刻ではなく
+    // JST の暦日で判定する（ADR 0012）。Vercel の関数は UTC で動くため、
+    // ローカル時刻に頼ると日本時間の 0〜9 時のあいだ 1 日前の月・年で集計してしまう。
+    const today = toDateKey(new Date())
+    const { year: y, month: m, day: d } = dateKeyParts(today)
 
     if (period === 'custom' && startDate && endDate) {
       dateFilter = {
@@ -21,41 +26,36 @@ export async function GET(request: NextRequest) {
     } else {
       switch (period) {
         case 'week': {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          dateFilter = { gte: weekAgo }
+          dateFilter = { gte: dateKeyOf(y, m, d - 7) }
           break
         }
         case 'month': {
-          const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-          dateFilter = { gte: monthAgo }
+          dateFilter = { gte: dateKeyOf(y, m - 1, d) }
           break
         }
         case 'quarter': {
-          const quarterAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
-          dateFilter = { gte: quarterAgo }
+          dateFilter = { gte: dateKeyOf(y, m - 3, d) }
           break
         }
         case 'year': {
-          const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
-          dateFilter = { gte: yearAgo }
+          dateFilter = { gte: dateKeyOf(y - 1, m, d) }
           break
         }
         default: {
-          const defaultMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-          dateFilter = { gte: defaultMonthAgo }
+          dateFilter = { gte: dateKeyOf(y, m - 1, d) }
         }
       }
     }
 
     // 配当合計はカレンダー年で集計する（ADR 0004）。
-    const thisYearStart = new Date(now.getFullYear(), 0, 1)
+    const thisYearStart = dateKeyOf(y, 0, 1)
 
     const [transactions, thisMonthTransactions, thisYearTransactions, thisYearDividends] =
       await Promise.all([
         prisma.transaction.findMany({ where: { transactionDate: dateFilter } }),
         prisma.transaction.findMany({
           where: {
-            transactionDate: { gte: new Date(now.getFullYear(), now.getMonth(), 1) },
+            transactionDate: { gte: dateKeyOf(y, m, 1) },
           },
         }),
         prisma.transaction.findMany({

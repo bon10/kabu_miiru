@@ -1,3 +1,4 @@
+import { jstMinutesOfDay } from './date-key'
 import { getApiSymbol } from './utils'
 
 export interface StockPrice {
@@ -132,13 +133,14 @@ export async function fetchMultipleStockPrices(symbols: string[]): Promise<Price
 
 /**
  * 前場・後場の判定
+ *
+ * 立会時間は東京証券取引所のものなので、サーバーのローカル時刻ではなく
+ * JST で判定する（ADR 0012）。Vercel の関数は UTC で動くため、ローカル時刻で
+ * 判定すると前場・後場がまるごと時間外に倒れる。
  */
 export function getCurrentMarketSession(): 'MORNING' | 'AFTERNOON' | 'AFTER_HOURS' {
-  const now = new Date()
-  const hour = now.getHours()
-  const minute = now.getMinutes()
-  const timeInMinutes = hour * 60 + minute
-  
+  const timeInMinutes = jstMinutesOfDay(new Date())
+
   // 前場: 9:00-11:30
   if (timeInMinutes >= 540 && timeInMinutes <= 690) {
     return 'MORNING'

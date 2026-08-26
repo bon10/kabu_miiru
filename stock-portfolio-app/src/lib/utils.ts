@@ -71,36 +71,31 @@ export function formatPercentage(value: number): string {
   return `${(value * 100).toFixed(2)}%`
 }
 
-export function formatDate(date: Date | string): string {
-  if (typeof window === 'undefined') {
-    // サーバーサイドでは簡単な形式を使用
-    const d = new Date(date)
-    return d.toISOString().split('T')[0]
-  }
+// 日付・日時の表示は日本時間で固定する（docs/2-domain/time-and-dates.md）。
+//
+// timeZone を省略すると実行環境のタイムゾーンが使われるため、サーバーで描くか
+// ブラウザで描くか、どの国で開くかによって日付が変わってしまう。取引日・配当日・
+// 購入日は日本の証券会社の帳簿上の日付なので、閲覧場所で変わってはならない。
+const JST = 'Asia/Tokyo'
 
-  const d = new Date(date)
+export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: JST,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
-  }).format(d)
+  }).format(new Date(date))
 }
 
 export function formatDateTime(date: Date | string): string {
-  if (typeof window === 'undefined') {
-    // サーバーサイドでは簡単な形式を使用
-    const d = new Date(date)
-    return d.toISOString().replace('T', ' ').substring(0, 16)
-  }
-
-  const d = new Date(date)
   return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: JST,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
-  }).format(d)
+  }).format(new Date(date))
 }
 
 export function isJapaneseStock(code: string): boolean {

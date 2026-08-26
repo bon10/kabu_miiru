@@ -39,9 +39,11 @@ model Stock {
   // firstPurchaseDate は最初の BUY の取引日で、買い増ししても動かない。初期残高
   // Transaction を持つ銘柄ではその起点日が入る（ADR 0008。購入日が判明していない
   // 銘柄では TSV 取り込み日の推定値）。
-  firstPurchaseDate     DateTime? // 初回購入日
-  purchaseDate          DateTime? // 最終購入日
-  saleDate              DateTime? // 最終売却日
+  // いずれも暦日（時刻を持たない）。@db.Date にすることで、書き込み経路の違いで
+  // 時刻が混在するのを型で防ぐ（docs/2-domain/time-and-dates.md）。
+  firstPurchaseDate     DateTime? @db.Date // 初回購入日
+  purchaseDate          DateTime? @db.Date // 最終購入日
+  saleDate              DateTime? @db.Date // 最終売却日
   realizedProfitLoss    Decimal? @db.Decimal(15,2) // 実現損益
   targetPrice           Decimal? @db.Decimal(15,4) // 目標価格
   marketSector          String?   // 市場・セクター
@@ -123,7 +125,8 @@ model Transaction {
   pricePerShare   Decimal         @db.Decimal(15,4)
   totalAmount     Decimal         @db.Decimal(15,2)
   fee             Decimal         @default(0) @db.Decimal(15,2)
-  transactionDate DateTime
+  // 取引日は暦日（時刻を持たない）。ADR 0012 / docs/2-domain/time-and-dates.md
+  transactionDate DateTime        @db.Date
   // 移行データ由来の保有を表す取引かどうか（ADR 0008）。
   // 種別は BUY のままで集計上も通常の購入と同一に扱い、このフラグが示すのは
   // 「取引日が実データではなく推定値である」ことだけ。
@@ -142,7 +145,8 @@ model DividendHistory {
   stockId         Int
   dividendAmount  Decimal   @db.Decimal(15,2)  // 受取通貨（currency）建ての金額。集計時に当日レートで円換算する
   currency        String    @default("JPY")    // 受取通貨（JPY / USD）。米国株でも証券会社の円受取があるため銘柄の市場とは独立に持つ
-  paymentDate     DateTime
+  // 受取日は暦日（時刻を持たない）。ADR 0012 / docs/2-domain/time-and-dates.md
+  paymentDate     DateTime  @db.Date
   dividendType    String?   // 配当種別（期末/中間/四半期/特別/分配金）。表示専用ラベルで集計には使わないため任意（未指定=NULL 可）
   createdAt       DateTime  @default(now())
 

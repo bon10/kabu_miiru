@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { recalculateStockAggregates, TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
-import { formatDateKey } from '@/lib/daily-price'
+import { dateKeyOf, formatDateKey } from '@/lib/date-key'
 
 // 初期残高 Transaction の生成（ADR 0008）。
 //
@@ -14,7 +14,10 @@ import { formatDateKey } from '@/lib/daily-price'
 // 購入日を持たない銘柄に与える起点日（ADR 0008）。
 // 全銘柄の Stock.createdAt が示す TSV 一括取り込み日。この日にその株数を保有して
 // いたことは事実であり、それ以前は不明なため推定で遡らせない。
-export const DEFAULT_BASELINE_DATE = new Date(2025, 8, 10) // 2025-09-10
+//
+// 暦日キーで持つ（ADR 0012）。ローカル暦日の 0 時にすると、この定数が指す時刻が
+// サーバーのタイムゾーンごとに変わり、下の「既存取引より前か」の比較結果がずれる。
+export const DEFAULT_BASELINE_DATE = dateKeyOf(2025, 8, 10) // 2025-09-10
 
 // 株数の比較に使う許容誤差。Decimal(15,4) で保持しているため 4 桁目未満は誤差とみなす。
 const SHARES_EPSILON = 0.00005

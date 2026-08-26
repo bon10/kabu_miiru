@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
-import { formatDateKey } from '@/lib/daily-price'
+import { formatDateKey } from '@/lib/date-key'
 
 type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma
 

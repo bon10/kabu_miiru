@@ -79,7 +79,9 @@ Yahoo Finance の chart API は `?range=…&interval=1d` で期間分の日次�
 
 ### 表示期間の指定（Issue #9、2026-08-16）
 
-期間は `range` プリセット（`thisMonth` / `lastMonth` / `1y` / `3y` / `5y` / `all`）で指定する。**「今日」の判定はサーバーのローカル暦日に依存するため、期間の解決はクライアントではなくサーバー側で行う**（クライアントは選択肢の名前だけを送る）。実装：[timeline-range.ts](../../src/lib/timeline-range.ts)
+期間は `range` プリセット（`thisMonth` / `lastMonth` / `1y` / `3y` / `5y` / `all`）で指定する。**期間の解決はクライアントではなくサーバー側で行う**（クライアントは選択肢の名前だけを送る）。閲覧者の端末のタイムゾーンで「今日」が変わってはならないため。実装：[timeline-range.ts](../../src/lib/timeline-range.ts)
+
+> **補足（2026-08-26 / ADR 0012）**：本 ADR は当初「『今日』の判定はサーバーのローカル暦日に依存する」と書いていたが、[ADR 0012](0012-date-key-in-jst.md) でこの依存を解消した。暦日は実行環境のタイムゾーンによらず JST で判定する。サーバー側で解決するという結論自体は変わらない。
 
 累計値（実現損益・配当）は期間を絞っても起点日からの積み上げを維持する。表示範囲は「どの日を点として返すか」だけを決め、計算自体は常に起点日から回す。
 
@@ -111,5 +113,6 @@ Yahoo Finance の chart API は `?range=…&interval=1d` で期間分の日次�
 - [ADR 0008 移行データの保有は初期残高 Transaction で表す](0008-initial-balance-transaction.md)（本 ADR の前提）
 - [ADR 0003 保有株数・投資額は Transaction を Source of Truth](0003-transaction-as-source-of-truth.md)（読み取り時に再構成する考え方の土台）
 - [ADR 0005 米国株は当日レートで円換算](0005-us-stock-jpy-conversion.md)（円換算原則を各過去日へ拡張した）
+- [ADR 0012 日次データの暦日は JST で判定し、暦日キーは UTC 0 時の Date で持つ](0012-date-key-in-jst.md)（本 ADR の「暦日をキーにする」設計をタイムゾーン非依存にした）
 - [外部 API 連携仕様：日次終値の取得](../external-apis.md#日次終値の取得range--interval)
 - [ユビキタス言語：推移・時系列関連](../2-domain/ubiquitous-language.md#推移時系列関連)

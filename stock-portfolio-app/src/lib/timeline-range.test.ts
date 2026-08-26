@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { TIMELINE_RANGES, isTimelineRange, resolveRange } from '@/lib/timeline-range'
+import { dateKeyOf } from '@/lib/date-key'
 
 // 推移グラフの期間プリセット（Issue #9）。
 // 「今月」「先月」は暦月の範囲、「N年」は今日から遡る範囲で、性質が違う。
 // とくに先月は終点が今日ではなく前月末になる点をテストで固定する。
 
+// 暦日キー（ADR 0012）を YYYY-MM-DD から作る。ローカル暦日で組み立てると
+// テストが実行環境のタイムゾーンに依存してしまうため dateKeyOf を使う。
 const day = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
+  return dateKeyOf(y, m - 1, d)
 }
 
 // 起点日が十分古い前提での解決結果

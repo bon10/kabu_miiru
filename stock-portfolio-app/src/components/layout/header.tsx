@@ -16,6 +16,14 @@ import {
   LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { requestPriceUpdate } from '@/lib/price-update'
 
@@ -25,42 +33,19 @@ type UpdateResult =
   | { type: 'warning'; message: string }
   | { type: 'error'; message: string }
 
+// 日常的に行き来する画面。ヘッダーに直接並べる。
 const navigation = [
-  {
-    name: 'ダッシュボード',
-    href: '/',
-    icon: LayoutDashboard,
-  },
-  {
-    name: '保有一覧',
-    href: '/holdings',
-    icon: Building2,
-  },
-  {
-    name: 'ポートフォリオ',
-    href: '/portfolio',
-    icon: PieChart,
-  },
-  {
-    name: '取引履歴',
-    href: '/transactions',
-    icon: History,
-  },
-  {
-    name: '配当（受取）',
-    href: '/dividends',
-    icon: Coins,
-  },
-  {
-    name: 'インポート',
-    href: '/import',
-    icon: Upload,
-  },
-  {
-    name: '設定',
-    href: '/settings',
-    icon: Settings,
-  },
+  { name: 'ダッシュボード', href: '/', icon: LayoutDashboard },
+  { name: '保有一覧', href: '/holdings', icon: Building2 },
+  { name: 'ポートフォリオ', href: '/portfolio', icon: PieChart },
+  { name: '取引履歴', href: '/transactions', icon: History },
+  { name: '配当（受取）', href: '/dividends', icon: Coins },
+]
+
+// たまにしか使わない画面。右端のメニューに畳んでヘッダーの幅を空ける。
+const secondaryNavigation = [
+  { name: 'インポート', href: '/import', icon: Upload },
+  { name: '設定', href: '/settings', icon: Settings },
 ]
 
 export default function Header() {
@@ -106,80 +91,116 @@ export default function Header() {
     return null
   }
 
+  const isCurrent = (href: string) =>
+    pathname === href || (href !== '/' && pathname.startsWith(href))
+
+  const email = session?.user?.email
+
   return (
     <header className="border-b">
       <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center space-x-8">
-            <Link href="/" className="text-xl font-bold text-primary">
-              株みーる
-            </Link>
+        <div className="flex h-16 items-center gap-4">
+          <Link
+            href="/"
+            className="shrink-0 text-xl font-bold whitespace-nowrap text-primary"
+          >
+            株みーる
+          </Link>
 
-            <nav className="flex items-center space-x-6">
-              {navigation.map((item) => {
-                const Icon = item.icon
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== '/' && pathname.startsWith(item.href))
+          {/* ラベルは狭い画面でアイコンだけに落とす。折り返させない（潰れて 2 行になるため） */}
+          <nav className="flex min-w-0 items-center gap-1">
+            {navigation.map((item) => {
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  aria-current={isCurrent(item.href) ? 'page' : undefined}
+                  title={item.name}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-colors',
+                    isCurrent(item.href)
+                      ? 'bg-accent text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="hidden lg:inline">{item.name}</span>
+                </Link>
+              )
+            })}
+          </nav>
 
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary',
-                      isActive ? 'text-primary' : 'text-muted-foreground'
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.name}</span>
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-
-          <div className="flex items-center space-x-4">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {result && (
               <span
                 className={cn(
-                  'text-sm',
+                  'hidden text-sm whitespace-nowrap xl:inline',
                   result.type === 'success' && 'text-green-600',
                   result.type === 'warning' && 'text-yellow-600',
-                  result.type === 'error' && 'text-red-600'
+                  result.type === 'error' && 'text-red-600',
                 )}
               >
                 {result.message}
               </span>
             )}
+
             <Button
               variant="outline"
               size="sm"
               onClick={handlePriceUpdate}
               disabled={isUpdating}
-              className="flex items-center space-x-2"
+              title="価格更新"
+              className="flex items-center gap-2"
             >
-              <RefreshCw
-                className={cn('h-4 w-4', isUpdating && 'animate-spin')}
-              />
-              <span>{isUpdating ? '更新中...' : '価格更新'}</span>
+              <RefreshCw className={cn('h-4 w-4', isUpdating && 'animate-spin')} />
+              <span className="hidden md:inline">
+                {isUpdating ? '更新中...' : '価格更新'}
+              </span>
             </Button>
 
-            {session?.user?.email && (
-              <div className="flex items-center space-x-2 border-l pl-4">
-                <span className="text-sm text-muted-foreground">
-                  {session.user.email}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => signOut({ callbackUrl: '/login' })}
-                  className="flex items-center space-x-2"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>ログアウト</span>
-                </Button>
-              </div>
+            {email && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="アカウントメニュー"
+                    className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    {email.charAt(0).toUpperCase()}
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuLabel className="text-muted-foreground font-normal">
+                    {email}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+
+                  {secondaryNavigation.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <DropdownMenuItem key={item.name} asChild>
+                        <Link
+                          href={item.href}
+                          className={cn(isCurrent(item.href) && 'text-primary')}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {item.name}
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => signOut({ callbackUrl: '/login' })}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    ログアウト
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>

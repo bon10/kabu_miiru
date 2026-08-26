@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy, toJpyByCurrency } from '@/lib/currency'
+import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 
 // ダッシュボード用サマリ API。
 // 用語は docs/2-domain/ubiquitous-language.md を参照。
@@ -10,7 +11,8 @@ import { toJpy, toJpyByCurrency } from '@/lib/currency'
 // 金額は全て円ベース。米国株のドル建て値は当日の USD/JPY レートで円換算する。
 export async function GET() {
   try {
-    const yearStart = new Date(new Date().getFullYear(), 0, 1)
+    // YTD の年の境目は JST の暦日で判定する（ADR 0004 / 0012）
+    const yearStart = dateKeyOf(dateKeyParts(toDateKey(new Date())).year, 0, 1)
     const [stocks, ytdDividends, usdJpyRate] = await Promise.all([
       prisma.stock.findMany(),
       prisma.dividendHistory.findMany({

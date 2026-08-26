@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { toDateKey } from '@/lib/date-key'
 import {
   createSuccessResponse,
   createErrorResponse,
@@ -90,10 +91,10 @@ export async function POST(request: NextRequest) {
         // 日付のパース
         const parsePurchaseDate =
           purchaseDate && purchaseDate.trim()
-            ? new Date(purchaseDate.trim())
+            ? toDateKey(new Date(purchaseDate.trim()))
             : null
         const parseSaleDate =
-          saleDate && saleDate.trim() ? new Date(saleDate.trim()) : null
+          saleDate && saleDate.trim() ? toDateKey(new Date(saleDate.trim())) : null
 
         // 数値のパース（エラーハンドリング付き）
         const parseDecimal = (value: string, defaultValue = 0) => {

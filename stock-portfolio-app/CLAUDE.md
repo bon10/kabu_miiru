@@ -38,6 +38,13 @@ docker-compose down         # 全サービスの停止
 docker-compose logs mysql   # MySQLログの確認
 ```
 
+**デプロイ（Vercel + TiDB Cloud / ADR 0013）:**
+```bash
+vercel --prod                                    # 本番デプロイ（Root Directory は stock-portfolio-app）
+node scripts/migrate-to-remote-db.js --apply     # ローカル MySQL から本番 DB へデータ移送
+```
+手順の全体は `docs/deployment.md` を参照。cron は `vercel.json` に定義（`0 23 * * *` UTC = JST 08:00 台）。
+
 **リンティングとフォーマット:**
 ```bash
 pnpm lint
@@ -107,10 +114,11 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - `GET /api/portfolio/timeline?range=1y` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0009）
   - `range`: `thisMonth` / `lastMonth` / `1y` / `3y` / `5y` / `all`（既定 `1y`）。**先月だけ終点が今日ではなく前月末**
 
-#### バッチ (`/api/batch`) — `X-API-Key` 必須
-- `POST /api/batch/price-update` - 現在価格の一括更新
-- `POST /api/batch/daily-close` - 日次終値と日次 USD/JPY の取り込み（`{"range":"1mo"}`。既存は上書きせず再実行可）
-- `POST /api/batch/initial-balance` - 初期残高 Transaction の生成（ADR 0008。既定は dry-run、`{"apply":true}` で実行）
+#### バッチ (`/api/batch`)
+- `POST /api/batch/price-update` - 現在価格の一括更新（`X-API-Key`）
+- `POST /api/batch/daily-close` - 日次終値と日次 USD/JPY の取り込み（`X-API-Key`。`{"range":"1mo"}`。既存は上書きせず再実行可）
+- `GET /api/batch/daily-close` - 同上の定期実行版（`Authorization: Bearer $CRON_SECRET`。Vercel Cron が 1 日 1 回呼ぶ。`range` はクエリ。ADR 0013）
+- `POST /api/batch/initial-balance` - 初期残高 Transaction の生成（`X-API-Key`。ADR 0008。既定は dry-run、`{"apply":true}` で実行）
 
 #### 取引管理 (`/api/transactions`)
 - `GET /api/transactions` - 取引履歴（ページング・フィルタ対応）
@@ -162,15 +170,25 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **将来の拡張**: Alpha Vantage、Polygon など正式API・複数ソース対応の余地あり
 - **レート制限**: API呼び出し制限の考慮
 
+### 日付の扱い（ADR 0012）
+**日付を触る前に `docs/2-domain/time-and-dates.md` を読むこと。** 要点だけ再掲する。
+
+- **`new Date(y, m, d)` を書かない**。サーバーのローカル時刻に依存するうえ、JST 0 時を `@db.Date` に保存すると Prisma が UTC 側の日付を切り出すため 1 日戻る。代わりに `src/lib/date-key.ts` の `dateKeyOf(y, m, d)` を使う
+- 暦日（`DailyPrice.priceDate` など）は**暦日キー**で扱う。生成・比較・書式化は `date-key.ts` に集約：`toDateKey` / `formatDateKey` / `dateKeyOf` / `dateKeyParts` / `addDays` / `jstMinutesOfDay`
+- 「今日」「今月」「今年」の境目、東証の立会時間の判定も JST で行う
+- 日付を扱うテストは `dateKeyOf` か Z 付き ISO 文字列で組み立てる（ローカル暦日で書くと実行環境の TZ に依存する）
+
 ### データベース設計
-- **MySQL 8.0**: 本番環境対応
+- **MySQL 8.0**: ローカル開発（docker-compose）
+- **TiDB Cloud Starter**: 本番。MySQL 互換のため Prisma スキーマは共通（ADR 0013）
 - **Prisma ORM**: スキーマファーストな設計
 - **インデックス**: パフォーマンスを考慮したインデックス設計
 - **リレーション**: 適切な外部キー制約とカスケード削除
 
 ### 認証・セキュリティ
 - **NextAuth.js**: Google OAuth のみ。`ALLOWED_LOGIN_EMAIL` に一致するメールアドレスだけ許可する単一ユーザー運用（ADR 0011）
-- **保護範囲**: `src/middleware.ts` が全画面と業務 API を保護。画面はログイン画面へリダイレクト、`/api/*` は 401 JSON。`/api/auth/*` と `/api/batch/*`（`X-API-Key` 認証）は対象外
+- **保護範囲**: `src/middleware.ts` が全画面と業務 API を保護。画面はログイン画面へリダイレクト、`/api/*` は 401 JSON。`/api/auth/*` と `/api/batch/*`（`X-API-Key` / `CRON_SECRET` 認証）は対象外
+- **バッチの認証**: 手動実行（POST）は `X-API-Key`、Vercel Cron からの定期実行（GET）は `Authorization: Bearer $CRON_SECRET`。**`CRON_SECRET` が未設定なら GET は常に 401**（設定漏れで誰でも叩ける状態にしないため。ADR 0013）
 - **サーバー側の自己 API 呼び出し**: `forwardSessionCookie()`（`src/lib/server-fetch.ts`）でセッション Cookie を引き継ぐこと。付けないとログイン済みでも 401 になる
 - **環境変数**: 機密情報の適切な管理
 - **バリデーション**: フロントエンド・バックエンド両方での入力検証

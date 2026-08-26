@@ -27,6 +27,7 @@
 
 - **[0-overview.md](./2-domain/0-overview.md)** - ドメインモデル概要
 - **[business-rules.md](./2-domain/business-rules.md)** - ビジネスルールと計算仕様
+- **[time-and-dates.md](./2-domain/time-and-dates.md)** - 時間と日付の扱い（「瞬間」と「暦日」の区別、暦日キー、資産推移グラフの基準時点）
 
 ### [3-architecture/](./3-architecture/)
 
@@ -54,7 +55,7 @@ API仕様書
 
 ### [7-adr/](./7-adr/)
 
-アーキテクチャ決定記録（ADR）。「最終決定は存在しない」前提で、見直しトリガー付きで設計判断を残す。現行 ADR 0001〜0011（配当の分離・保有株数の Source of Truth・配当の期間集計・米国株の円換算・受取配当の通貨・受取配当額の算出方法・初期残高 Transaction・推移の日次終値からの再構成・平均取得単価の丸め・単一ユーザーの Google ログインなど）。
+アーキテクチャ決定記録（ADR）。「最終決定は存在しない」前提で、見直しトリガー付きで設計判断を残す。現行 ADR 0001〜0013（配当の分離・保有株数の Source of Truth・配当の期間集計・米国株の円換算・受取配当の通貨・受取配当額の算出方法・初期残高 Transaction・推移の日次終値からの再構成・平均取得単価の丸め・単一ユーザーの Google ログイン・暦日キーの JST 固定・Vercel + TiDB へのデプロイ構成）。
 
 ## 🚀 クイックスタート
 
@@ -140,6 +141,7 @@ pnpm dev
 ## 🔗 関連リンク
 
 - **[開発環境セットアップ](./development-setup.md)** - 詳細なセットアップ手順
+- **[デプロイ手順](./deployment.md)** - Vercel + TiDB Cloud への公開手順と cron 設定
 - **[外部API連携仕様](./external-apis.md)** - Yahoo Finance API等の詳細
 - **[開発・運用手順](../CLAUDE.md)** - 詳細な開発コマンド
 - **[実装ファイル](../prisma/schema.prisma)** - 実際のデータベーススキーマ

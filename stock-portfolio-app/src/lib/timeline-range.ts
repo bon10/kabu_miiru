@@ -4,8 +4,11 @@
 //   - 暦月（今月・先月）… 月の境界で区切る。とくに先月は終点が今日ではなく前月末
 //   - 直近 N 年（1年・3年・5年）… 今日を終点に暦年で遡る
 //
-// 「今日」の判定はサーバーのローカル暦日に依存するため、期間の解決はクライアント
+// 「今日」の判定は閲覧者の端末ではなく JST の暦日で行うため、期間の解決はクライアント
 // ではなくサーバー側で行う（クライアントは選択肢の名前だけを送る）。
+// 入出力の日付はすべて暦日キー（ADR 0012）で受け渡す。
+
+import { dateKeyOf, dateKeyParts } from '@/lib/date-key'
 
 export type TimelineRange = 'thisMonth' | 'lastMonth' | '1y' | '3y' | '5y' | 'all'
 
@@ -25,6 +28,7 @@ export function isTimelineRange(value: string): value is TimelineRange {
 }
 
 export interface ResolvedRange {
+  // どちらも暦日キー
   start: Date
   end: Date
   // 起点日が期間の終点より後で、描画できるデータが 1 日も無い状態。
@@ -32,7 +36,8 @@ export interface ResolvedRange {
   isEmpty: boolean
 }
 
-// 期間プリセットを実際の日付範囲に解決する。
+// 期間プリセットを実際の日付範囲に解決する。today・baselineDate・戻り値の
+// start / end はいずれも暦日キー。
 //
 // baselineDate（= 最も古い取引日）より前は保有状況が不明なため描画しない（ADR 0009）。
 // そのため start は必ず baselineDate 以降に切り詰める。
@@ -41,31 +46,29 @@ export function resolveRange(
   today: Date,
   baselineDate: Date,
 ): ResolvedRange {
-  const y = today.getFullYear()
-  const m = today.getMonth()
-  const d = today.getDate()
+  const { year: y, month: m, day: d } = dateKeyParts(today)
 
   let start: Date
   let end: Date
 
   switch (range) {
     case 'thisMonth':
-      start = new Date(y, m, 1)
-      end = new Date(y, m, d)
+      start = dateKeyOf(y, m, 1)
+      end = dateKeyOf(y, m, d)
       break
     case 'lastMonth':
-      start = new Date(y, m - 1, 1)
+      start = dateKeyOf(y, m - 1, 1)
       // 当月 0 日 = 前月末日。月ごとの日数やうるう年を自前で判定しなくて済む
-      end = new Date(y, m, 0)
+      end = dateKeyOf(y, m, 0)
       break
     case 'all':
       start = new Date(baselineDate)
-      end = new Date(y, m, d)
+      end = dateKeyOf(y, m, d)
       break
     default: {
       const years = Number(range.replace('y', ''))
-      start = new Date(y - years, m, d)
-      end = new Date(y, m, d)
+      start = dateKeyOf(y - years, m, d)
+      end = dateKeyOf(y, m, d)
       break
     }
   }

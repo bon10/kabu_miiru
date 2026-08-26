@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy } from '@/lib/currency'
+import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 
 // 証券会社別の保有銘柄ビュー。
 // 各証券会社のサマリと、その下の銘柄リストを返す。
@@ -15,7 +16,8 @@ import { toJpy } from '@/lib/currency'
 export async function GET(request: NextRequest) {
   try {
     const includeZero = request.nextUrl.searchParams.get('includeZero') === 'true'
-    const yearStart = new Date(new Date().getFullYear(), 0, 1)
+    // 配当合計はカレンダー年で集計する（ADR 0004）。年の境目は JST で判定する（ADR 0012）
+    const yearStart = dateKeyOf(dateKeyParts(toDateKey(new Date())).year, 0, 1)
 
     const stockWhere: Prisma.StockWhereInput = includeZero
       ? {}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { todayInput } from '@/lib/date-key'
 import {
   Dialog,
   DialogContent,
@@ -70,7 +71,7 @@ export function TransactionFormDialog({
   const [pricePerShare, setPricePerShare] = useState('')
   const [fee, setFee] = useState('0')
   const [transactionDate, setTransactionDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
+    todayInput()
   )
   const [memo, setMemo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -94,7 +95,7 @@ export function TransactionFormDialog({
       setShares('')
       setPricePerShare('')
       setFee('0')
-      setTransactionDate(new Date().toISOString().slice(0, 10))
+      setTransactionDate(todayInput())
       setMemo('')
       setError(null)
     }
