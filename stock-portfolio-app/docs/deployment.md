@@ -16,9 +16,23 @@
 ## 1. TiDB Cloud Starter を用意する
 
 1. [TiDB Cloud](https://tidbcloud.com/) でクラスタを作る（リージョンは任意。`ap-northeast-1` が近い）
-2. **Connect** から接続情報を開き、**Prisma** を選んで接続文字列をコピーする
-3. データベース（例：`stock_portfolio`）を作る
-4. 接続文字列に `?sslaccept=strict` が入っていることを確認する。パブリックエンドポイントでは TLS が必須で、これが無いと接続できない
+2. 左ナビの **SQL Editor** を開き、データベースを作る。**接続情報を取りに行く前にこれをやる**（Connect ダイアログの Database は既存のデータベースしか選べないため）
+
+   ```sql
+   CREATE DATABASE stock_portfolio;
+   ```
+
+3. **Connect** を開き、次を選ぶ
+
+   | 項目 | 選ぶもの | 理由 |
+   | --- | --- | --- |
+   | Connection Type | **Public Endpoint** | Private Endpoint は AWS PrivateLink 経由で自分の VPC 内からしか届かない。Vercel の実行環境からもローカルからも到達できない |
+   | Branch | **main** | Branch は本体データを copy-on-write で複製した検証用インスタンス。本番として使うのは分岐元の `main` |
+   | Database | **stock_portfolio** | ひとつ上の 2 で作ったもの |
+   | Connect With | **Prisma** | Prisma 形式の接続文字列が出る |
+
+4. **Generate Password** でパスワードを発行する。**一度しか表示されない**ので控えておく（無くしたら再発行すればよいが、既存の接続文字列は使えなくなる）
+5. 表示された接続文字列をコピーし、`?sslaccept=strict` が入っていることを確認する。パブリックエンドポイントでは TLS が必須で、これが無いと接続できない
 
 ```
 mysql://xxxxx.root:PASSWORD@gateway01.xxxx.prod.aws.tidbcloud.com:4000/stock_portfolio?sslaccept=strict
@@ -62,31 +76,38 @@ node scripts/migrate-to-remote-db.js --apply
 
 ### `$transaction` が動くか確かめる（TiDB での動作は未検証）
 
-本アプリは取引の登録・編集で `$transaction` を使っている。TiDB でこれが通らないと、保有株数と平均取得単価が不整合なまま確定しうる。**アプリを公開する前に**、`$transaction` を使う[初期残高バッチ](../src/lib/initial-balance.ts)を dry-run して確認する。
+本アプリは取引の登録・編集で `$transaction` を使っている（[transactions](../src/app/api/transactions/route.ts) / [同 [id]](../src/app/api/transactions/[id]/route.ts) / [price-update](../src/app/api/batch/price-update/route.ts) / [initial-balance](../src/lib/initial-balance.ts)）。TiDB でこれが通らないと、保有株数と平均取得単価が不整合なまま確定しうる。**Vercel にデプロイする前に**、ローカルのアプリを TiDB に向けて確認する。
+
+Vercel プロジェクトはまだ無いので本番 URL は使えない。ローカルの dev サーバーの接続先だけ TiDB に差し替えて叩く。
 
 ```bash
-curl -X POST -H "X-API-Key: $BATCH_API_KEY" {本番URL}/api/batch/initial-balance
+cd stock-portfolio-app
+DATABASE_URL='mysql://...tidbcloud.com:4000/stock_portfolio?sslaccept=strict' pnpm dev
 ```
 
-エラーになる場合は Neon（PostgreSQL）へ切り替える（[ADR 0013](./7-adr/0013-deploy-vercel-tidb.md) の案B）。
+別のターミナルから、`$transaction` を使う[初期残高バッチ](../src/lib/initial-balance.ts)を実行する。
+
+```bash
+# 1. まず dry-run で作られる件数を確認する（DB は変更されない）
+curl -X POST -H "X-API-Key: $BATCH_API_KEY" -H "Content-Type: application/json" \
+  -d '{}' http://localhost:3300/api/batch/initial-balance
+
+# 2. apply: true で実際に書き込む。$transaction を通るのはこちらだけ
+curl -X POST -H "X-API-Key: $BATCH_API_KEY" -H "Content-Type: application/json" \
+  -d '{"apply":true}' http://localhost:3300/api/batch/initial-balance
+```
+
+> **dry-run では `$transaction` を検証できない。** [initial-balance.ts:181](../src/lib/initial-balance.ts#L181) が `apply` でない場合に `$transaction` の手前で `continue` するため、`apply: true` で実行しないとトランザクションは一度も開かれない。初期残高の生成は ADR 0008 の移行作業そのものなので、ここで実行してしまってよい（何度実行しても結果は変わらない）。
+
+成功条件は、レスポンスの `mismatches` が空であること。初期残高を作った後に再計算した保有株数・平均取得単価が移行前と一致したことを意味する。`$transaction` が TiDB で通らなければ、ここでエラーになる。
+
+エラーになる場合は Neon（PostgreSQL）へ切り替える（[ADR 0013](./7-adr/0013-deploy-vercel-tidb.md) の案B）。**Vercel プロジェクトを作る前に分かる**ので、手戻りは接続文字列の差し替えだけで済む。
 
 ---
 
-## 3. Google OAuth に本番 URL を登録する
+## 3. Vercel プロジェクトを作って本番 URL を確定させる
 
-Google Cloud Console > APIとサービス > 認証情報 > 対象の OAuth クライアント ID を開き、**承認済みのリダイレクト URI** に本番ぶんを追加する。
-
-```
-{本番URL}/api/auth/callback/google
-```
-
-ローカル用（`http://localhost:3300/api/auth/callback/google`）は消さず、両方残す。
-
-> 本番 URL は Vercel プロジェクトを作らないと決まらない。先に手順 4 でプロジェクトを作って URL を確定させてから戻ってきてもよい。
-
----
-
-## 4. Vercel プロジェクトを作る
+本番 URL は Vercel が採番するため、**先にプロジェクトを作らないと決まらない**。`NEXTAUTH_URL` と Google OAuth のリダイレクト URI はどちらもこの URL を必要とするので、先にここを済ませる。
 
 1. Vercel でリポジトリを import する
 2. **Root Directory** に `stock-portfolio-app` を指定する
@@ -99,7 +120,6 @@ Settings > Environment Variables で、**Production** に次を登録する。
 | 変数 | 値 | 未設定・誤設定だとどうなるか |
 | --- | --- | --- |
 | `DATABASE_URL` | TiDB の接続文字列（`sslaccept=strict` 付き） | DB に繋がらない |
-| `NEXTAUTH_URL` | 本番 URL（`https://xxxxx.vercel.app`） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
 | `NEXTAUTH_SECRET` | `openssl rand -base64 32` の出力 | セッションを偽造されうる |
 | `GOOGLE_CLIENT_ID` | Google OAuth のクライアント ID | ログインできない |
 | `GOOGLE_CLIENT_SECRET` | 同シークレット | ログインできない |
@@ -107,11 +127,11 @@ Settings > Environment Variables で、**Production** に次を登録する。
 | `BATCH_API_KEY` | 任意のランダム文字列 | バッチの手動実行（POST）ができない |
 | `CRON_SECRET` | 16 文字以上のランダム文字列 | **cron が 401 で失敗し続ける**（未設定なら誰でも叩ける状態にしないため常に拒否する） |
 
+`NEXTAUTH_URL` はここでは登録しない。値になる本番 URL が、次のデプロイで初めて確定するため。手順 4 で登録する。
+
 > `TZ` は設定しない。Vercel の予約環境変数で登録できず、暦日はコード側で JST 固定にしてある（[ADR 0012](./7-adr/0012-date-key-in-jst.md)）。
 
-環境変数を後から足した場合は、反映のために再デプロイが要る。
-
-### デプロイする
+### デプロイして URL を確認する
 
 ```bash
 cd stock-portfolio-app
@@ -119,6 +139,45 @@ vercel --prod
 ```
 
 または、対象ブランチを push して Vercel の自動デプロイに任せる。
+
+デプロイ後、Vercel のプロジェクト Overview に表示される本番 URL（`https://xxxxx.vercel.app`）を控える。
+
+> **このデプロイではまだログインできない。** `NEXTAUTH_URL` が未設定で、Google 側にもリダイレクト URI が未登録のため。手順 4 まで進めば通るようになる。
+>
+> **`prisma generate` は `postinstall` で明示的に実行している。** Vercel 上では、`@prisma/client` のインストール時に走る自動生成を Prisma が信用せず、`Prisma has detected that this project was built on Vercel, which caches dependencies` を投げてビルドが落ちる。ログ上は生成が成功していても落ちるので紛らわしい。`package.json` の `postinstall` を消さないこと。
+
+---
+
+## 4. 本番 URL を NextAuth と Google OAuth に登録する
+
+手順 3 で確定した本番 URL を、2 箇所に登録する。
+
+### Vercel 側
+
+Settings > Environment Variables の **Production** に追加する。
+
+| 変数 | 値 | 未設定・誤設定だとどうなるか |
+| --- | --- | --- |
+| `NEXTAUTH_URL` | 本番 URL（`https://xxxxx.vercel.app`） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
+
+### Google 側
+
+Google Cloud Console > APIとサービス > 認証情報 > 対象の OAuth クライアント ID を開き、**承認済みのリダイレクト URI** に本番ぶんを追加する。
+
+```
+{本番URL}/api/auth/callback/google
+```
+
+ローカル用（`http://localhost:3300/api/auth/callback/google`）は消さず、両方残す。
+
+### 再デプロイする
+
+環境変数は**デプロイ時に焼き込まれる**ため、`NEXTAUTH_URL` を後から足しただけでは反映されない。もう一度デプロイする。
+
+```bash
+cd stock-portfolio-app
+vercel --prod
+```
 
 ---
 
