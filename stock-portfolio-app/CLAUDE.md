@@ -188,6 +188,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 ### 認証・セキュリティ
 - **NextAuth.js**: Google OAuth のみ。`ALLOWED_LOGIN_EMAIL` に一致するメールアドレスだけ許可する単一ユーザー運用（ADR 0011）
 - **保護範囲**: `src/middleware.ts` が全画面と業務 API を保護。画面はログイン画面へリダイレクト、`/api/*` は 401 JSON。`/api/auth/*` と `/api/batch/*`（`X-API-Key` / `CRON_SECRET` 認証）は対象外
+- **セッション判定は middleware だけ（ADR 0014）**: ログイン済みかどうかの判定は `src/middleware.ts` の `getToken` が一手に担う。**サーバーコンポーネントで `getServerSession` を呼ばないこと。** 2 系統の判定が食い違うと `/` と `/login` が互いにリダイレクトし合い、画面もログも出ないまま無限リダイレクトになる（2026-08-26 に本番で発生）。`/login` も middleware を通り、未ログインなら通し、ログイン済みなら `/` へ戻す。表示用途に限りクライアント側の `useSession` は使ってよい
 - **バッチの認証**: 手動実行（POST）は `X-API-Key`、Vercel Cron からの定期実行（GET）は `Authorization: Bearer $CRON_SECRET`。**`CRON_SECRET` が未設定なら GET は常に 401**（設定漏れで誰でも叩ける状態にしないため。ADR 0013）
 - **サーバー側の自己 API 呼び出し**: `forwardSessionCookie()`（`src/lib/server-fetch.ts`）でセッション Cookie を引き継ぐこと。付けないとログイン済みでも 401 になる
 - **環境変数**: 機密情報の適切な管理

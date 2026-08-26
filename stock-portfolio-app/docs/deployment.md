@@ -152,7 +152,7 @@ vercel --prod
 
 ## 4. 本番 URL を NextAuth と Google OAuth に登録する
 
-手順 3 で確定した本番 URL を、2 箇所に登録する。
+手順 3 で確定した本番 URL を、2 箇所に登録する。**カスタムドメインを割り当てている場合は、`xxxxx.vercel.app` ではなくカスタムドメインを使う。**
 
 ### Vercel 側
 
@@ -160,7 +160,36 @@ Settings > Environment Variables の **Production** に追加する。
 
 | 変数 | 値 | 未設定・誤設定だとどうなるか |
 | --- | --- | --- |
-| `NEXTAUTH_URL` | 本番 URL（`https://xxxxx.vercel.app`） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
+| `NEXTAUTH_URL` | 本番 URL（`https://example.com`。**必ず `https://` から書く**） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
+
+> **スキームまで正しく書くこと。** next-auth は `NEXTAUTH_URL` が `https://` で始まるかどうかでセッションクッキー名を切り替える（`__Secure-next-auth.session-token` か `next-auth.session-token` か）。`http://localhost:3300` のような値が残っていると、[middleware](../src/middleware.ts) の `getToken` が本番で書かれるクッキーとは別の名前を探すことになる。なお未設定の場合は `VERCEL` 環境変数へのフォールバックが効くため、**「設定漏れ」より「http のまま」のほうが検出しにくい**。
+
+### ログインできない場合
+
+**まず Vercel のランタイムログを見る。** [middleware](../src/middleware.ts) は、セッションクッキーが届いているのに復号できなかった場合に次を出力する。
+
+```
+セッションクッキーは届いているが復号できませんでした。
+```
+
+これが出ていれば、原因は `NEXTAUTH_SECRET` の不一致か、古い設定で発行されたクッキーの残存に絞られる。`NEXTAUTH_SECRET` を変更した場合、変更前に発行されたクッキーはすべて復号できなくなるため、ブラウザのクッキー削除で解消する。
+
+出ていなければ、そもそもクッキーが届いていない。デプロイ済みの設定を `curl` で確認する。`__Host-` / `__Secure-` 付きのクッキー名が返れば `NEXTAUTH_URL` は `https://` で認識されている。`providers` の `callbackUrl` が実際に開いているドメインと一致しているかも見る。
+
+```bash
+curl -sS -o /dev/null -D - {本番URL}/api/auth/csrf | grep -i set-cookie
+curl -sS {本番URL}/api/auth/providers
+```
+
+ログイン後の状態は次で確認できる（`/api/auth/*` は middleware の除外対象なので、認証で詰まっていても開ける）。
+
+```
+{本番URL}/api/auth/session
+```
+
+> **`ERR_TOO_MANY_REDIRECTS` について。** 2026-08-26 の本番で、ログイン後に無限リダイレクトが発生した（原因は特定できないまま解消）。当時は「ログイン済みか」を [middleware](../src/middleware.ts) の `getToken` と `login/page.tsx` の `getServerSession` の **2 か所で別々に判定**しており、両者が食い違うと `/` と `/login` が互いにリダイレクトし合う構造だった。画面が一切表示されないためログもエラーも見えず、切り分けができなかった。
+>
+> 現在は判定を middleware の `getToken` 1 か所に統合し、`/login` からセッション判定を削除してある。**同じ往復は構造的に発生しない。** ログイン画面へ通すか `/` へ戻すかも同じ `getToken` の結果で決まる。この統合を戻す変更（`/login` に `getServerSession` を足すなど）は、無限リダイレクトを再び持ち込むことになる。
 
 ### Google 側
 
