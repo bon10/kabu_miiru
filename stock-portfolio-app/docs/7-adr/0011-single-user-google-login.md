@@ -36,6 +36,7 @@ Accepted (2026-08-22)
   - 画面はログイン画面へリダイレクトし、遷移先を `callbackUrl` で引き継ぐ
   - `/api/*` は**リダイレクトせず 401 JSON** を返す。画面から fetch している API がログイン画面の HTML を受け取ると、呼び出し側で失敗を判別できないため
   - `/api/batch/*` は保護対象外。`X-API-Key` で認証しており、ブラウザのセッションを持たない cron から呼ばれる
+  - `/login` も middleware を通す。未ログインなら通し、ログイン済みなら `/` へ戻す（[ADR 0014](0014-session-check-in-middleware-only.md) で決定。**ログイン済みかどうかの判定は middleware の `getToken` だけが行い、画面側に 2 つ目の判定を置かない**）
 - ログイン後の画面遷移は既存のヘッダーを流用し、ログイン中のメールアドレスとログアウト操作を右端に置く
 
 ### 理由
@@ -76,4 +77,5 @@ Accepted (2026-08-22)
 
 - [ADR 0009 ポートフォリオ推移は日次終値から再構成する](0009-portfolio-timeline-from-daily-close.md)（`/api/batch/*` を保護対象外にする根拠となるバッチ）
 - [ADR 0013 本番は Vercel + TiDB Cloud Starter に置き、日次バッチは Vercel Cron で回す](0013-deploy-vercel-tidb.md)（`NEXTAUTH_URL` の本番切り替えと `CRON_SECRET` を決めた）
+- [ADR 0014 ログイン済みかどうかの判定は middleware だけが行う](0014-session-check-in-middleware-only.md)（本 ADR の遮断方式を、判定の一元化まで踏み込んで定めたもの）
 - Issue #10 アプリをデプロイして cron を動かせるようにする（本 ADR の親）
