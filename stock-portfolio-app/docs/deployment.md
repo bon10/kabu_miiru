@@ -152,7 +152,7 @@ vercel --prod
 
 ## 4. 本番 URL を NextAuth と Google OAuth に登録する
 
-手順 3 で確定した本番 URL を、2 箇所に登録する。
+手順 3 で確定した本番 URL を、2 箇所に登録する。**カスタムドメインを割り当てている場合は、`xxxxx.vercel.app` ではなくカスタムドメインを使う。**
 
 ### Vercel 側
 
@@ -160,7 +160,33 @@ Settings > Environment Variables の **Production** に追加する。
 
 | 変数 | 値 | 未設定・誤設定だとどうなるか |
 | --- | --- | --- |
-| `NEXTAUTH_URL` | 本番 URL（`https://xxxxx.vercel.app`） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
+| `NEXTAUTH_URL` | 本番 URL（`https://example.com`。**必ず `https://` から書く**） | ログインのコールバックが失敗する。加えて**ダッシュボードと資産推移の画面が 500 になる**（サーバー側から自分の `/api/*` を呼ぶときのベース URL を兼ねているため） |
+
+> **スキームまで正しく書くこと。** next-auth は `NEXTAUTH_URL` が `https://` で始まるかどうかでセッションクッキー名を切り替える（`__Secure-next-auth.session-token` か `next-auth.session-token` か）。`http://localhost:3300` のような値が残っていると、[middleware](../src/middleware.ts) の `getToken` が本番で書かれるクッキーとは別の名前を探すことになる。なお未設定の場合は `VERCEL` 環境変数へのフォールバックが効くため、**「設定漏れ」より「http のまま」のほうが検出しにくい**。
+
+### ログインが無限リダイレクトになる場合
+
+`ERR_TOO_MANY_REDIRECTS` が出たときは、まずこの URL をブラウザで開いて切り分ける（`/api/auth/*` は middleware の除外対象なのでループしない）。
+
+```
+{本番URL}/api/auth/session
+```
+
+| 結果 | 意味 |
+| --- | --- |
+| `{"user":{...}}` | クッキーは届き、NextAuth（Node 側）は読めている。食い違いは middleware の `getToken`（Edge 側）に限定される |
+| `{}` | セッションクッキー自体が届いていない。クッキーの発行・保存側を疑う |
+
+デプロイ済みの設定は `curl` でも確認できる。`__Host-` / `__Secure-` 付きのクッキー名が返れば `NEXTAUTH_URL` は `https://` で認識されている。
+
+```bash
+curl -sS -o /dev/null -D - {本番URL}/api/auth/csrf | grep -i set-cookie
+curl -sS {本番URL}/api/auth/providers
+```
+
+> **ループする構造そのものについて。** 本アプリは「ログイン済みか」を 2 箇所で別々に判定している。[middleware](../src/middleware.ts) は `getToken`、[login/page.tsx](../src/app/login/page.tsx) は `getServerSession` を使う。両者の判定が食い違うと、middleware が `/login` へ送り、`/login` が `/` へ送り返して往復する。画面が一切表示されないためログもエラーも見えない。**環境変数を疑う前に、この構造が原因でありうることを思い出すこと。**
+>
+> 2026-08-26 に本番で発生した事例では、`NEXTAUTH_URL` は正しく `https://` で設定されており、Google のリダイレクト URI も登録済みだった。**原因を特定できないまま解消した。** 再発時は上記の切り分けから始める。
 
 ### Google 側
 
