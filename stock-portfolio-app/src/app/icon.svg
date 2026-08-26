@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="kabumiruBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10B981" />
+      <stop offset="1" stop-color="#047857" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#kabumiruBg)" />
+  <g fill="#03362A" opacity="0.4">
+    <rect x="11" y="36" width="10" height="17" rx="2" />
+    <rect x="27" y="27" width="10" height="26" rx="2" />
+    <rect x="43" y="18" width="10" height="35" rx="2" />
+  </g>
+  <path
+    d="M12 44 L26 30 L38 36 L52 16"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
