@@ -1,146 +1,152 @@
-# 株式ポートフォリオ管理アプリ API 仕様書
+# 株式ポートフォリオ管理アプリ - ドキュメント
 
-このディレクトリには、株式ポートフォリオ管理アプリのAPI仕様書が含まれています。
+このディレクトリには、株式ポートフォリオ管理アプリ（通称「株みーる」）の包括的なドキュメントが含まれています。
 
-## ファイル構成
+## 📁 ドキュメント構成
 
-- `api-spec.yaml` - OpenAPI 3.0.3形式の完全なAPI仕様書
-- `README.md` - この説明ファイル
+### [0-overview/](./0-overview/)
 
-## API仕様書の利用方法
+プロジェクトの全体概要と基本情報
 
-### 1. Swagger UIでの閲覧
+- **[project-overview.md](./0-overview/project-overview.md)** - プロジェクトの目的、特徴、実装状況
 
-Swagger UIを使用してAPI仕様書を可視化できます：
+### [1-requirements/](./1-requirements/)
 
-```bash
-# Swagger UIをローカルで起動
-npx swagger-ui-serve api-spec.yaml
-```
+機能要件の詳細定義
 
-または、オンラインのSwagger Editorを使用：
-1. https://editor.swagger.io/ にアクセス
-2. `api-spec.yaml` の内容をコピー&ペースト
+- **[0-overview.md](./1-requirements/0-overview.md)** - 要件概要と開発優先度
+- **[stock-management.md](./1-requirements/stock-management.md)** - 銘柄一覧機能要件
+- **[portfolio-summary.md](./1-requirements/portfolio-summary.md)** - ポートフォリオサマリー機能要件
+- **[portfolio-visualization.md](./1-requirements/portfolio-visualization.md)** - 視覚化分析機能要件
+- **[transaction-management.md](./1-requirements/transaction-management.md)** - 取引履歴管理機能要件
+- **[price-update.md](./1-requirements/price-update.md)** - 株価自動取得機能要件
 
-### 2. コード生成
+### [2-domain/](./2-domain/)
 
-API仕様書から各言語のクライアントライブラリを生成：
+ドメインモデルとビジネスルール
 
-```bash
-# TypeScript/JavaScriptクライアント生成
-npx @openapitools/openapi-generator-cli generate \
-  -i api-spec.yaml \
-  -g typescript-fetch \
-  -o ./generated/client
+- **[0-overview.md](./2-domain/0-overview.md)** - ドメインモデル概要
+- **[business-rules.md](./2-domain/business-rules.md)** - ビジネスルールと計算仕様
+- **[time-and-dates.md](./2-domain/time-and-dates.md)** - 時間と日付の扱い（「瞬間」と「暦日」の区別、暦日キー、資産推移グラフの基準時点）
 
-# サーバーコード生成（Express.js）
-npx @openapitools/openapi-generator-cli generate \
-  -i api-spec.yaml \
-  -g nodejs-express-server \
-  -o ./generated/server
-```
+### [3-architecture/](./3-architecture/)
 
-### 3. APIテスト
+システムアーキテクチャ設計
 
-仕様書をPostmanやInsomniaにインポートしてAPIテストを実行：
+- **[0-overview.md](./3-architecture/0-overview.md)** - アーキテクチャ概要
+- **[tech-stack.md](./3-architecture/tech-stack.md)** - 技術スタック詳細
+- **[data-flow.md](./3-architecture/data-flow.md)** - データフロー設計
 
-```bash
-# Postmanコレクション生成
-npx openapi-to-postman -s api-spec.yaml -o portfolio-api.postman_collection.json
-```
+### [4-db-design/](./4-db-design/)
 
-## API概要
+データベース設計
 
-### エンドポイント一覧
+- **[0-overview.md](./4-db-design/0-overview.md)** - データベース設計概要
 
-| カテゴリ | エンドポイント | 説明 |
-|---------|---------------|------|
-| **銘柄管理** | `GET /stocks` | 銘柄一覧取得 |
-| | `POST /stocks` | 銘柄追加 |
-| | `GET /stocks/{id}` | 銘柄詳細取得 |
-| | `PUT /stocks/{id}` | 銘柄更新 |
-| | `DELETE /stocks/{id}` | 銘柄削除 |
-| **ポートフォリオ** | `GET /portfolio/composition` | 構成比率取得 |
-| | `GET /portfolio/performance` | パフォーマンス比較 |
-| **取引履歴** | `GET /transactions` | 取引履歴一覧 |
-| | `POST /transactions` | 取引追加 |
-| | `GET /transactions/summary` | 期間別サマリー |
-| **価格管理** | `POST /prices/update` | 現在値更新 |
-| | `GET /prices/history/{stockId}` | 価格履歴取得 |
-| **サマリー** | `GET /summary` | 全体サマリー |
-| | `GET /summary/by-company` | 証券会社別サマリー |
-| **インポート** | `POST /import/tsv` | TSVファイルインポート |
-| **バッチ** | `POST /batch/price-update` | 価格自動更新バッチ |
+### [5-ui-design/](./5-ui-design/)
 
-### 主要な機能
+ユーザーインターフェース設計（未実装）
 
-#### 1. 📋 銘柄一覧管理
-- TSVファイルベースの銘柄データ管理
-- 保有株数、損益、配当情報の追跡
-- 証券会社別、市場別フィルタリング
+### [6-api-spec/](./6-api-spec/)
 
-#### 2. 📊 ポートフォリオ分析
-- 銘柄別、証券会社別、市場別構成比率
-- パフォーマンス比較とランキング
-- 円グラフ、バーチャート対応
+API仕様書
 
-#### 3. 📝 取引履歴管理
-- 売買・配当受取履歴の管理
-- 期間別サマリーと分析
-- ページネーション対応
+- **[api-spec.yaml](./6-api-spec/api-spec.yaml)** - OpenAPI 3.0.3形式の完全なAPI仕様書
 
-#### 4. 💹 現在値取得
-- 手動・自動価格更新機能
-- 前場（11:30）・後場（15:00）の定期実行
-- 価格履歴の保存とチャート表示
+### [7-adr/](./7-adr/)
 
-#### 5. 📊 合計情報表示
-- ポートフォリオ全体のサマリー
-- 証券会社別の集計情報
-- リアルタイム損益計算
+アーキテクチャ決定記録（ADR）。「最終決定は存在しない」前提で、見直しトリガー付きで設計判断を残す。現行 ADR 0001〜0013（配当の分離・保有株数の Source of Truth・配当の期間集計・米国株の円換算・受取配当の通貨・受取配当額の算出方法・初期残高 Transaction・推移の日次終値からの再構成・平均取得単価の丸め・単一ユーザーの Google ログイン・暦日キーの JST 固定・Vercel + TiDB へのデプロイ構成）。
 
-## 技術仕様
+## 🚀 クイックスタート
 
-### データ形式
-- **リクエスト/レスポンス**: JSON形式
-- **日付**: ISO 8601形式 (`YYYY-MM-DD`)
-- **日時**: ISO 8601形式 (`YYYY-MM-DDTHH:mm:ssZ`)
-- **数値**: decimal形式（高精度計算対応）
+### 1. プロジェクト概要の理解
 
-### エラーハンドリング
-すべてのエラーレスポンスは統一された形式：
+まず[プロジェクト概要](./0-overview/project-overview.md)を読んで、アプリの目的と特徴を理解してください。
 
-```json
-{
-  "code": "ERROR_CODE",
-  "message": "エラーメッセージ",
-  "details": {},
-  "timestamp": "2023-12-01T12:00:00Z"
-}
-```
+### 2. 機能要件の確認
 
-### 認証
-- **一般API**: 認証不要（単一ユーザー想定）
-- **バッチAPI**: APIキー認証（`X-API-Key`ヘッダー）
+[機能要件概要](./1-requirements/0-overview.md)で主要機能と開発優先度を確認してください。
 
-## 開発環境での利用
+### 3. 技術スタックの理解
+
+[技術スタック](./3-architecture/tech-stack.md)で使用技術と選定理由を確認してください。
+
+### 4. データベース設計の確認
+
+[データベース設計](./4-db-design/0-overview.md)でデータ構造を理解してください。
+
+### 5. API仕様の確認
+
+[API仕様書](./6-api-spec/api-spec.yaml)で具体的なエンドポイントを確認してください。
+
+## 📊 TSVデータ仕様
+
+### ファイル形式
+
+- **ファイル名**: `stock_template.tsv`
+- **文字エンコーディング**: UTF-8
+- **列数**: 20列
+- **区切り文字**: タブ文字
+
+### 主要な列
+
+1. **No** - 連番
+2. **銘柄名** - 株式の正式名称
+3. **保有会社** - 証券会社名
+4. **市場** - 国内/米国
+5. **コード** - 銘柄コード
+6. **保有株数** - 現在の保有株数
+7. **平均取得単価** - 平均購入価格
+8. **投資額** - 総投資金額
+9. **現在価格** - 最新株価
+10. **損益** - 未実現損益
+
+詳細は[プロジェクト概要](./0-overview/project-overview.md#-tsvデータ仕様)を参照してください。
+
+## 🔧 開発環境セットアップ
 
 ```bash
-# 開発サーバー起動
+# プロジェクトのクローン
+git clone <repository-url>
 cd stock-portfolio-app
+
+# 依存関係のインストール
+pnpm install
+
+# データベースのセットアップ
+pnpm db:push
+
+# 開発サーバーの起動
 pnpm dev
-
-# API仕様書の確認
-curl http://localhost:3300/api/stocks
-
-# テストデータインポート
-curl -X POST http://localhost:3300/api/import/tsv \
-  -F "file=@sample-data.tsv" \
-  -F "options={\"replaceExisting\":false}"
 ```
 
-## 関連リンク
+## 📈 現在の実装状況
 
-- [要件定義書](https://www.notion.so/yosoi/2160e811f99681f7b49dffc15db79cfe)
-- [設計書](https://www.notion.so/yosoi/2170e811f9968026bdd3edaa5b70951d)
-- [プロジェクトリポジトリ](../README.md)
+### ✅ 実装済み
+
+- 基本的なCRUD操作
+- TSVデータインポート機能
+- Yahoo Finance API連携（基本機能）
+- データベーススキーマ設計
+- フロントエンド基盤
+
+### 🚧 未実装
+
+- 取引履歴管理機能
+- 視覚化分析機能
+- 自動価格更新バッチ
+- 認証・認可機能
+- 本番環境デプロイ
+
+## 🔗 関連リンク
+
+- **[開発環境セットアップ](./development-setup.md)** - 詳細なセットアップ手順
+- **[デプロイ手順](./deployment.md)** - Vercel + TiDB Cloud への公開手順と cron 設定
+- **[外部API連携仕様](./external-apis.md)** - Yahoo Finance API等の詳細
+- **[開発・運用手順](../CLAUDE.md)** - 詳細な開発コマンド
+- **[実装ファイル](../prisma/schema.prisma)** - 実際のデータベーススキーマ
+
+## 📝 ドキュメント更新履歴
+
+- **2025-01-22**: 初版作成、TSVデータ仕様追加、実装状況更新
+- **2025-01-22**: Yahoo Finance API詳細追加、認証状況明確化

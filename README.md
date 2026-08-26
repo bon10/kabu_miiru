@@ -27,10 +27,10 @@ cd stock-portfolio-app
 pnpm install
 
 # Prismaクライアントの生成
-pnpm dlx prisma generate
+pnpm db:generate
 
 # データベーススキーマの反映
-pnpm dlx prisma db push
+pnpm db:push
 
 # 開発サーバーの起動
 pnpm dev
@@ -96,13 +96,13 @@ Transaction       -- 取引履歴
 cd stock-portfolio-app
 
 # Prismaクライアントの生成
-pnpm dlx prisma generate
+pnpm db:generate
 
 # スキーマ変更の反映
-pnpm dlx prisma db push
+pnpm db:push
 
 # データベースGUIの起動
-pnpm dlx prisma studio
+pnpm db:studio
 
 # データベースのリセット
 pnpm db:reset

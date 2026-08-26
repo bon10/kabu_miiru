@@ -1,11 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Edit, TrendingUp, TrendingDown } from 'lucide-react'
+import {
+  ArrowLeft,
+  Edit,
+  Plus,
+  Minus,
+  Coins,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
+import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
 import {
   Table,
   TableBody,
@@ -16,27 +28,37 @@ import {
 } from '@/components/ui/table'
 import {
   formatCurrency,
+  formatMoney,
+  formatPrice,
   formatPercentage,
   formatDate,
   formatDateTime,
+  formatAvgAcquisitionPrice,
+  AVG_ACQUISITION_PRICE_NOTE,
+  INITIAL_BALANCE_BASELINE_NOTE,
+  cn,
 } from '@/lib/utils'
+import { requestPriceUpdate } from '@/lib/price-update'
 
 interface Transaction {
   id: number
-  transactionType: string
+  transactionType: 'BUY' | 'SELL'
   shares: number
   pricePerShare: number
   totalAmount: number
   fee: number
   transactionDate: string
+  // 移行データ由来の保有を表す取引か（ADR 0008）。取引日が起点日であることを示す
+  isInitialBalance?: boolean
   memo?: string
 }
 
 interface DividendHistory {
   id: number
   dividendAmount: number
+  currency: string
   paymentDate: string
-  dividendType: string
+  dividendType: string | null
 }
 
 interface PriceHistory {
@@ -62,6 +84,7 @@ interface StockDetail {
   dividendPerShare: number
   dividendYield: number
   dividendAmount: number
+  firstPurchaseDate?: string
   purchaseDate?: string
   saleDate?: string
   targetPrice?: number
@@ -69,6 +92,8 @@ interface StockDetail {
   purpose?: string
   lastPriceUpdate?: string
   priceUpdateStatus: string
+  priceUpdateError?: string | null
+  usdJpyRate?: number
   transactions: Transaction[]
   dividendHistory: DividendHistory[]
   priceHistory: PriceHistory[]
@@ -78,44 +103,85 @@ export default function StockDetailPage() {
   const params = useParams()
   const [stock, setStock] = useState<StockDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
+  const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
 
-  useEffect(() => {
-    const fetchStock = async () => {
-      try {
-        setLoading(true)
+  // 受取配当ダイアログに渡す銘柄候補。配列リテラルを毎レンダー生成すると
+  // ダイアログ側の初期化 effect が再発火して入力が消えるため、銘柄が変わる時だけ作り直す。
+  const dividendStockOptions = useMemo(
+    () =>
+      stock
+        ? [
+            {
+              id: stock.id,
+              stockName: stock.stockName,
+              code: stock.code,
+              market: stock.market,
+              sharesHeld: stock.sharesHeld,
+            },
+          ]
+        : [],
+    [stock]
+  )
 
-        // "new"の場合は新規作成ページなので、データ取得をスキップ
-        if (params.id === 'new') {
-          setLoading(false)
-          return
-        }
+  // 初回購入日が初期残高 Transaction の起点日かどうか（ADR 0008）。
+  // 購入日が判明していない銘柄の起点日は TSV 一括取り込み日の推定値で、
+  // 実際の初回購入日はそれより前でありうる。そのまま「初回購入日」として
+  // 見せると事実より後の日付を断定してしまうため、注記を添える判断に使う。
+  const firstPurchaseFromInitialBalance = useMemo(
+    () =>
+      !!stock?.firstPurchaseDate &&
+      stock.transactions.some(
+        (tx) =>
+          tx.isInitialBalance && tx.transactionDate === stock.firstPurchaseDate
+      ),
+    [stock]
+  )
 
-        const response = await fetch(`/api/stocks/${params.id}`)
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch stock')
-        }
-
-        const result = await response.json()
-        setStock(result.data)
-      } catch (error) {
-        console.error('Error fetching stock:', error)
-      } finally {
+  const fetchStock = useCallback(async () => {
+    try {
+      setLoading(true)
+      if (params.id === 'new') {
         setLoading(false)
+        return
       }
-    }
-
-    if (params.id) {
-      fetchStock()
+      const response = await fetch(`/api/stocks/${params.id}`)
+      if (!response.ok) throw new Error('Failed to fetch stock')
+      const result = await response.json()
+      setStock(result.data)
+    } catch (error) {
+      console.error('Error fetching stock:', error)
+    } finally {
+      setLoading(false)
     }
   }, [params.id])
+
+  const handlePriceUpdate = async () => {
+    if (!stock) return
+    setIsUpdatingPrice(true)
+    try {
+      await requestPriceUpdate([stock.id])
+      // 更新後の現在価格・損益・失敗理由を反映するため再取得する
+      await fetchStock()
+    } catch (error) {
+      console.error('価格更新エラー:', error)
+    } finally {
+      setIsUpdatingPrice(false)
+    }
+  }
+
+  useEffect(() => {
+    if (params.id) fetchStock()
+  }, [params.id, fetchStock])
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -133,7 +199,7 @@ export default function StockDetailPage() {
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
             <Button asChild variant="outline">
-              <Link href="/stocks">
+              <Link href="/holdings">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 戻る
               </Link>
@@ -151,7 +217,7 @@ export default function StockDetailPage() {
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
@@ -171,25 +237,96 @@ export default function StockDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
-            <Link href="/stocks">
+            <Link href="/holdings">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{stock.stockName}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">{stock.stockName}</h1>
+              {stock.priceUpdateStatus === 'ERROR' && (
+                <Badge
+                  variant="destructive"
+                  title={stock.priceUpdateError ?? '価格取得に失敗しました'}
+                >
+                  価格更新失敗
+                </Badge>
+              )}
+            </div>
             <p className="text-muted-foreground">
               {stock.code} | {stock.market} | {stock.holdingCompany}
             </p>
           </div>
         </div>
-        <Button asChild>
-          <Link href={`/stocks/${stock.id}/edit`}>
-            <Edit className="h-4 w-4 mr-2" />
-            編集
-          </Link>
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDialogType('BUY')
+              setDialogOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            購入を追加
+          </Button>
+          <Button
+            variant="outline"
+            disabled={stock.sharesHeld <= 0}
+            onClick={() => {
+              setDialogType('SELL')
+              setDialogOpen(true)
+            }}
+          >
+            <Minus className="h-4 w-4 mr-2" />
+            売却
+          </Button>
+          <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
+            <Coins className="h-4 w-4 mr-2" />
+            受取配当を追加
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handlePriceUpdate}
+            disabled={isUpdatingPrice}
+          >
+            <RefreshCw
+              className={cn('h-4 w-4 mr-2', isUpdatingPrice && 'animate-spin')}
+            />
+            {isUpdatingPrice ? '更新中...' : '価格更新'}
+          </Button>
+          <Button asChild>
+            <Link href={`/stocks/${stock.id}/edit`}>
+              <Edit className="h-4 w-4 mr-2" />
+              編集
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      <TransactionFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        stocks={[
+          {
+            id: stock.id,
+            stockName: stock.stockName,
+            code: stock.code,
+            sharesHeld: stock.sharesHeld,
+          },
+        ]}
+        defaultStockId={stock.id}
+        defaultType={dialogType}
+        onSubmitted={() => fetchStock()}
+      />
+
+      <DividendFormDialog
+        open={dividendDialogOpen}
+        onOpenChange={setDividendDialogOpen}
+        stocks={dividendStockOptions}
+        defaultStockId={stock.id}
+        onSubmitted={() => fetchStock()}
+      />
 
       {/* 基本情報カード */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -208,11 +345,16 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">平均取得単価</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.avgAcquisitionPrice)}
+                  {formatAvgAcquisitionPrice(
+                    stock.avgAcquisitionPrice,
+                    stock.market
+                  )}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">投資額</p>
+                <p className="text-sm text-muted-foreground">
+                  投資額{stock.market === '米国' && '（円換算）'}
+                </p>
                 <p className="text-2xl font-bold">
                   {formatCurrency(stock.investmentAmount)}
                 </p>
@@ -220,10 +362,13 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">現在価格</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.currentPrice)}
+                  {formatPrice(stock.currentPrice, stock.market)}
                 </p>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {AVG_ACQUISITION_PRICE_NOTE}
+            </p>
           </CardContent>
         </Card>
 
@@ -241,27 +386,36 @@ export default function StockDetailPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">損益</p>
+                <p className="text-sm text-muted-foreground">
+                  評価損益{stock.market === '米国' && '（円換算）'}
+                </p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
                   {formatCurrency(stock.profitLoss)}
                 </p>
+                {stock.market === '米国' && stock.usdJpyRate && (
+                  <p className="text-xs text-muted-foreground">
+                    ＄1 ≈ ¥{stock.usdJpyRate.toFixed(2)} 換算
+                  </p>
+                )}
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">損益率</p>
+                <p className="text-sm text-muted-foreground">評価損益率</p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
                   {formatPercentage(stock.profitLossRate)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">配当利回り</p>
+                <p className="text-sm text-muted-foreground">
+                  配当利回り（予想）
+                </p>
                 <p className="text-2xl font-bold">
                   {formatPercentage(stock.dividendYield)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">配当金額</p>
+                <p className="text-sm text-muted-foreground">予想年間配当</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(stock.dividendAmount)}
+                  {formatPrice(stock.dividendAmount, stock.market)}
                 </p>
               </div>
             </div>
@@ -276,15 +430,28 @@ export default function StockDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {stock.firstPurchaseDate && (
+              <div>
+                <p className="text-sm text-muted-foreground">初回購入日</p>
+                <p className="font-medium">
+                  {formatDate(stock.firstPurchaseDate)}
+                </p>
+                {firstPurchaseFromInitialBalance && (
+                  <p className="text-xs text-muted-foreground">
+                    {INITIAL_BALANCE_BASELINE_NOTE}
+                  </p>
+                )}
+              </div>
+            )}
             {stock.purchaseDate && (
               <div>
-                <p className="text-sm text-muted-foreground">購入日</p>
+                <p className="text-sm text-muted-foreground">最終購入日</p>
                 <p className="font-medium">{formatDate(stock.purchaseDate)}</p>
               </div>
             )}
             {stock.saleDate && (
               <div>
-                <p className="text-sm text-muted-foreground">売却日</p>
+                <p className="text-sm text-muted-foreground">最終売却日</p>
                 <p className="font-medium">{formatDate(stock.saleDate)}</p>
               </div>
             )}
@@ -292,7 +459,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">目標価格</p>
                 <p className="font-medium">
-                  {formatCurrency(stock.targetPrice)}
+                  {formatPrice(stock.targetPrice, stock.market)}
                 </p>
               </div>
             )}
@@ -347,29 +514,25 @@ export default function StockDetailPage() {
                         className={`px-2 py-1 rounded text-xs font-medium ${
                           transaction.transactionType === 'BUY'
                             ? 'bg-blue-100 text-blue-800'
-                            : transaction.transactionType === 'SELL'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
                         }`}
                       >
                         {transaction.transactionType === 'BUY'
                           ? '購入'
-                          : transaction.transactionType === 'SELL'
-                          ? '売却'
-                          : '配当'}
+                          : '売却'}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
                       {transaction.shares.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.pricePerShare)}
+                      {formatPrice(transaction.pricePerShare, stock.market)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.totalAmount)}
+                      {formatPrice(transaction.totalAmount, stock.market)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(transaction.fee)}
+                      {formatPrice(transaction.fee, stock.market)}
                     </TableCell>
                     <TableCell>
                       {formatDate(transaction.transactionDate)}
@@ -385,27 +548,29 @@ export default function StockDetailPage() {
         </CardContent>
       </Card>
 
-      {/* 配当履歴 */}
+      {/* 受取配当履歴 */}
       {stock.dividendHistory.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>配当履歴 ({stock.dividendHistory.length}件)</CardTitle>
+            <CardTitle>
+              受取配当履歴 ({stock.dividendHistory.length}件)
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>配当種別</TableHead>
-                  <TableHead className="text-right">配当金額</TableHead>
+                  <TableHead className="text-right">受取金額</TableHead>
                   <TableHead>支払日</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stock.dividendHistory.map((dividend) => (
                   <TableRow key={dividend.id}>
-                    <TableCell>{dividend.dividendType}</TableCell>
+                    <TableCell>{dividend.dividendType ?? '—'}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(dividend.dividendAmount)}
+                      {formatMoney(dividend.dividendAmount, dividend.currency)}
                     </TableCell>
                     <TableCell>{formatDate(dividend.paymentDate)}</TableCell>
                   </TableRow>

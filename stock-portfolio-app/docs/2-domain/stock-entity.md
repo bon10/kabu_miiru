@@ -41,8 +41,9 @@ TSVファイルの全20列に対応した株式情報のメインエンティテ
 ### 取引・管理情報
 | フィールド名 | 型 | 必須 | 説明 | TSV列対応 |
 |---|---|---|---|---|
-| purchaseDate | DATETIME | - | 購入日 | 購入日 |
-| saleDate | DATETIME | - | 売却日 | 売却日 |
+| firstPurchaseDate | DATETIME | - | 初回購入日（最初の BUY の取引日。買い増ししても動かない） | 購入日 |
+| purchaseDate | DATETIME | - | 最終購入日（最後の BUY の取引日） | 購入日 |
+| saleDate | DATETIME | - | 最終売却日（最後の SELL の取引日） | 売却日 |
 | realizedProfitLoss | DECIMAL(15,2) | - | 実現損益 | 損益（売却時） |
 | targetPrice | DECIMAL(15,4) | - | 目標価格 | 目標価格 |
 | marketSector | STRING | - | 市場・セクター | 市場・セクター |

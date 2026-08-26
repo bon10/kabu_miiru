@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
-import { calculateProfitLoss, getMarketFromCode } from '@/lib/utils'
+import { getMarketFromCode } from '@/lib/utils'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
+import { toJpy } from '@/lib/currency'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,23 +16,22 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'asc'
 
     // フィルター条件を構築
-    const where: any = {}
-    
+    const where: Prisma.StockWhereInput = {}
+
     if (!includeZero) {
       where.sharesHeld = { gt: 0 }
     }
-    
+
     if (market) {
       where.market = market
     }
-    
+
     if (holdingCompany) {
       where.holdingCompany = holdingCompany
     }
 
     // ソート条件を構築
-    const orderBy: any = {}
-    orderBy[sortBy] = sortOrder
+    const orderBy: Prisma.StockOrderByWithRelationInput = { [sortBy]: sortOrder }
 
     const stocks = await prisma.stock.findMany({
       where,
@@ -42,26 +44,29 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // フィルターオプションを取得
-    const [markets, companies] = await Promise.all([
+    // フィルターオプションを取得（証券会社はマスタから）
+    const [markets, brokers, usdJpyRate] = await Promise.all([
       prisma.stock.findMany({
         select: { market: true },
         distinct: ['market']
       }),
-      prisma.stock.findMany({
-        select: { holdingCompany: true },
-        distinct: ['holdingCompany']
-      })
+      prisma.broker.findMany({
+        select: { name: true },
+        orderBy: { name: 'asc' }
+      }),
+      getCurrentUsdJpyRate(),
     ])
 
+    // 金額（投資額・損益）は円ベース。米国株は当日レートで円換算する。
+    // 単価（平均取得・現在価格）はドル建てのまま返す。
     return Response.json(createSuccessResponse({
       stocks: stocks.map(stock => ({
         ...stock,
         sharesHeld: Number(stock.sharesHeld),
         avgAcquisitionPrice: Number(stock.avgAcquisitionPrice),
-        investmentAmount: Number(stock.investmentAmount),
+        investmentAmount: toJpy(Number(stock.investmentAmount), stock.market, usdJpyRate),
         currentPrice: Number(stock.currentPrice),
-        profitLoss: Number(stock.profitLoss),
+        profitLoss: toJpy(Number(stock.profitLoss), stock.market, usdJpyRate),
         profitLossRate: Number(stock.profitLossRate),
         dividendPerShare: Number(stock.dividendPerShare),
         dividendYield: Number(stock.dividendYield),
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
       totalCount: stocks.length,
       filters: {
         market: markets.map(m => m.market),
-        holdingCompany: companies.map(c => c.holdingCompany)
+        holdingCompany: brokers.map(b => b.name)
       }
     }))
   } catch (error) {
@@ -83,7 +88,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    
+
     // 必須フィールドの検証
     if (!body.stockName || !body.holdingCompany || !body.code) {
       return Response.json(
@@ -107,6 +112,9 @@ export async function POST(request: NextRequest) {
         investmentAmount: body.investmentAmount || 0,
         dividendPerShare: body.dividendPerShare || 0,
         dividendYield: body.dividendYield || 0,
+        // 銘柄登録時点では購入日は 1 つしか受け取らない。以後の取引登録で
+        // recalculateStockAggregates が Transaction から初回・最終を上書きする。
+        firstPurchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         targetPrice: body.targetPrice,
         marketSector: body.marketSector,

@@ -25,9 +25,9 @@ pnpm install
 
 **データベース操作:**
 ```bash
-pnpm dlx prisma generate    # Prismaクライアントの生成
-pnpm dlx prisma db push     # データベースへのスキーマ変更の反映
-pnpm dlx prisma studio      # データベースGUIの起動
+pnpm db:generate            # Prismaクライアントの生成
+pnpm db:push                # データベースへのスキーマ変更の反映
+pnpm db:studio              # データベースGUIの起動
 pnpm db:reset               # データベースのリセット
 ```
 
@@ -38,11 +38,27 @@ docker-compose down         # 全サービスの停止
 docker-compose logs mysql   # MySQLログの確認
 ```
 
+**デプロイ（Vercel + TiDB Cloud / ADR 0013）:**
+```bash
+vercel --prod                                    # 本番デプロイ（Root Directory は stock-portfolio-app）
+node scripts/migrate-to-remote-db.js --apply     # ローカル MySQL から本番 DB へデータ移送
+```
+手順の全体は `docs/deployment.md` を参照。cron は `vercel.json` に定義（`0 23 * * *` UTC = JST 08:00 台）。
+
 **リンティングとフォーマット:**
 ```bash
 pnpm lint
 pnpm dlx prettier --write .
 ```
+
+**テスト（Vitest）:**
+```bash
+pnpm test                   # 全テストを1回実行
+pnpm test:watch             # 変更監視でループ実行（TDD用）
+```
+- 純粋ロジックは `src/lib` に抽出して単体テストする（例: `src/lib/dividend.ts` ↔ `src/lib/dividend.test.ts`）
+- 設定は `vitest.config.mts`（node 環境・`@/` エイリアス）
+- TDD の進め方は `.claude/skills/tdd` を参照
 
 ## アーキテクチャ
 
@@ -53,7 +69,7 @@ pnpm dlx prettier --write .
 - **フォーム**: React Hook Form + Zod バリデーション
 - **チャート**: Recharts
 - **データフェッチング**: SWR
-- **認証**: NextAuth.js（設定済み、実装準備完了）
+- **認証**: NextAuth.js（Google OAuth・単一ユーザー・JWT セッション、ADR 0011）
 - **パッケージマネージャー**: pnpm
 
 ### 主要ディレクトリ構造
@@ -71,7 +87,9 @@ pnpm dlx prettier --write .
 - **Stock**: 株式マスターデータ（TSVファイルの20フィールドに完全対応）
   - 基本情報、保有情報、投資情報、配当情報、価格更新情報
 - **Transaction**: 売買・配当取引履歴
-- **PriceHistory**: 価格履歴（市場セッション対応）
+- **PriceHistory**: 価格履歴（市場セッション対応、場中の値を含む）
+- **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）
+- **ExchangeRate**: USD/JPY の日次レート（`rateDate` ユニーク、ADR 0005 / 0008）
 - **DividendHistory**: 配当履歴
 - **PortfolioSummary**: ポートフォリオサマリー（キャッシュ用）
 
@@ -93,6 +111,14 @@ pnpm dlx prettier --write .
 #### ポートフォリオ分析 (`/api/portfolio`)
 - `GET /api/portfolio/composition` - ポートフォリオ構成分析（株式・企業・市場別）
 - `GET /api/portfolio/performance` - パフォーマンス指標
+- `GET /api/portfolio/timeline?range=1y` - 資産推移（評価額・投資元本・評価損益・累計配当。日次終値から読み取り時に再構成、ADR 0009）
+  - `range`: `thisMonth` / `lastMonth` / `1y` / `3y` / `5y` / `all`（既定 `1y`）。**先月だけ終点が今日ではなく前月末**
+
+#### バッチ (`/api/batch`)
+- `POST /api/batch/price-update` - 現在価格の一括更新（`X-API-Key`）
+- `POST /api/batch/daily-close` - 日次終値と日次 USD/JPY の取り込み（`X-API-Key`。`{"range":"1mo"}`。既存は上書きせず再実行可）
+- `GET /api/batch/daily-close` - 同上の定期実行版（`Authorization: Bearer $CRON_SECRET`。Vercel Cron が 1 日 1 回呼ぶ。`range` はクエリ。ADR 0013）
+- `POST /api/batch/initial-balance` - 初期残高 Transaction の生成（`X-API-Key`。ADR 0008。既定は dry-run、`{"apply":true}` で実行）
 
 #### 取引管理 (`/api/transactions`)
 - `GET /api/transactions` - 取引履歴（ページング・フィルタ対応）
@@ -111,7 +137,7 @@ pnpm dlx prettier --write .
 ### 株価データ処理
 - **日本株**: 数字コード（例："7203"）は自動的に".T"サフィックス付加
 - **米国株**: 標準ティッカーシンボル使用
-- **現在**: モックデータ生成システム（実際のAPI統合準備完了）
+- **価格取得元**: Yahoo Finance 非公式API（`query1.finance.yahoo.com/v8/finance/chart`）を直接呼び出し。取得失敗時のみモックデータ（乱数）にフォールバック
 - **価格更新**: ステータス追跡（SUCCESS/ERROR/PENDING）
 - **市場セッション**: 前場・後場・時間外取引の識別
 
@@ -138,18 +164,31 @@ pnpm dlx prettier --write .
 - **コンポーネント**: 機能ごとに分離された再利用可能なコンポーネント
 
 ### 株価取得システム
-- **現在の実装**: モックデータ生成（開発用）
-- **将来の拡張**: Yahoo Finance、Alpha Vantage、Polygon APIの統合準備完了
-- **エラーハンドリング**: 価格取得失敗時の適切なエラー処理
+- **現在の実装**: Yahoo Finance 非公式API（v8 chart エンドポイント）から実際の株価を取得（`src/lib/stock-price.ts`）
+- **フォールバック**: API呼び出しが失敗した場合のみ、乱数ベースのモック価格を返す（開発用）。この際 `priceSource` は `yahoo` のまま `SUCCESS` として保存されるため、実データと区別できない点に注意
+- **更新対象**: 保有株数 > 0 の銘柄。銘柄ごとに直列処理（並列化なし）
+- **将来の拡張**: Alpha Vantage、Polygon など正式API・複数ソース対応の余地あり
 - **レート制限**: API呼び出し制限の考慮
 
+### 日付の扱い（ADR 0012）
+**日付を触る前に `docs/2-domain/time-and-dates.md` を読むこと。** 要点だけ再掲する。
+
+- **`new Date(y, m, d)` を書かない**。サーバーのローカル時刻に依存するうえ、JST 0 時を `@db.Date` に保存すると Prisma が UTC 側の日付を切り出すため 1 日戻る。代わりに `src/lib/date-key.ts` の `dateKeyOf(y, m, d)` を使う
+- 暦日（`DailyPrice.priceDate` など）は**暦日キー**で扱う。生成・比較・書式化は `date-key.ts` に集約：`toDateKey` / `formatDateKey` / `dateKeyOf` / `dateKeyParts` / `addDays` / `jstMinutesOfDay`
+- 「今日」「今月」「今年」の境目、東証の立会時間の判定も JST で行う
+- 日付を扱うテストは `dateKeyOf` か Z 付き ISO 文字列で組み立てる（ローカル暦日で書くと実行環境の TZ に依存する）
+
 ### データベース設計
-- **MySQL 8.0**: 本番環境対応
+- **MySQL 8.0**: ローカル開発（docker-compose）
+- **TiDB Cloud Starter**: 本番。MySQL 互換のため Prisma スキーマは共通（ADR 0013）
 - **Prisma ORM**: スキーマファーストな設計
 - **インデックス**: パフォーマンスを考慮したインデックス設計
 - **リレーション**: 適切な外部キー制約とカスケード削除
 
 ### 認証・セキュリティ
-- **NextAuth.js**: 設定済み（実装準備完了）
+- **NextAuth.js**: Google OAuth のみ。`ALLOWED_LOGIN_EMAIL` に一致するメールアドレスだけ許可する単一ユーザー運用（ADR 0011）
+- **保護範囲**: `src/middleware.ts` が全画面と業務 API を保護。画面はログイン画面へリダイレクト、`/api/*` は 401 JSON。`/api/auth/*` と `/api/batch/*`（`X-API-Key` / `CRON_SECRET` 認証）は対象外
+- **バッチの認証**: 手動実行（POST）は `X-API-Key`、Vercel Cron からの定期実行（GET）は `Authorization: Bearer $CRON_SECRET`。**`CRON_SECRET` が未設定なら GET は常に 401**（設定漏れで誰でも叩ける状態にしないため。ADR 0013）
+- **サーバー側の自己 API 呼び出し**: `forwardSessionCookie()`（`src/lib/server-fetch.ts`）でセッション Cookie を引き継ぐこと。付けないとログイン済みでも 401 になる
 - **環境変数**: 機密情報の適切な管理
 - **バリデーション**: フロントエンド・バックエンド両方での入力検証

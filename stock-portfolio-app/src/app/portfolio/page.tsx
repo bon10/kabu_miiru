@@ -1,19 +1,28 @@
 import PortfolioClient from '@/components/portfolio/portfolio-client'
+import { forwardSessionCookie } from '@/lib/server-fetch'
+
+// 閲覧者のセッション Cookie を引き継いで自アプリの API を呼ぶため、リクエストが
+// 存在しないビルド時には描画できない。宣言しないと Next.js が静的生成を試み、
+// headers() が投げる DYNAMIC_SERVER_USAGE がビルドログに毎回出る。
+export const dynamic = 'force-dynamic'
 
 // サーバーコンポーネントでポートフォリオデータを取得
 async function getPortfolioData() {
   try {
+    const sessionCookie = await forwardSessionCookie()
     const [compositionResponse, performanceResponse] = await Promise.all([
       fetch(
         `${process.env.NEXTAUTH_URL || 'http://localhost:3300'}/api/portfolio/composition`,
         {
           cache: 'no-store',
+          headers: sessionCookie,
         }
       ),
       fetch(
         `${process.env.NEXTAUTH_URL || 'http://localhost:3300'}/api/portfolio/performance`,
         {
           cache: 'no-store',
+          headers: sessionCookie,
         }
       ),
     ])

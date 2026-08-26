@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Agentation } from "agentation";
 import "./globals.css";
 import MainLayout from "@/components/layout/main-layout";
+import AuthSessionProvider from "@/components/providers/session-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +30,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <MainLayout>{children}</MainLayout>
+        <AuthSessionProvider>
+          <MainLayout>{children}</MainLayout>
+        </AuthSessionProvider>
+        {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
   );

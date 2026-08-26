@@ -44,9 +44,9 @@ pnpm install
 **Database operations:**
 ```bash
 cd stock-portfolio-app
-pnpm dlx prisma generate    # Generate Prisma client
-pnpm dlx prisma db push     # Push schema changes to MySQL database
-pnpm dlx prisma studio      # Open database GUI
+pnpm db:generate            # Generate Prisma client
+pnpm db:push                # Push schema changes to MySQL database
+pnpm db:studio              # Open database GUI
 ```
 
 **Docker operations:**
