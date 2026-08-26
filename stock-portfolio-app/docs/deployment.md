@@ -145,6 +145,8 @@ vercel --prod
 > **このデプロイではまだログインできない。** `NEXTAUTH_URL` が未設定で、Google 側にもリダイレクト URI が未登録のため。手順 4 まで進めば通るようになる。
 >
 > **`prisma generate` は `postinstall` で明示的に実行している。** Vercel 上では、`@prisma/client` のインストール時に走る自動生成を Prisma が信用せず、`Prisma has detected that this project was built on Vercel, which caches dependencies` を投げてビルドが落ちる。ログ上は生成が成功していても落ちるので紛らわしい。`package.json` の `postinstall` を消さないこと。
+>
+> **Next.js のバージョンが古いとデプロイがブロックされる。** Vercel は既知の脆弱性がある Next.js を検出すると `Build Failed / Vulnerable version of Next.js detected` で止める。`next build` 自体は成功し `Build Completed` まで出たあとに落ちるため、ビルドログを上から読むと原因が見つからない。落ちたら Next.js を v15 系の保守ライン（`npm view next dist-tags` の `backport`）まで上げる。
 
 ---
 
