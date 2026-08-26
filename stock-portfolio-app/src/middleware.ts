@@ -75,10 +75,14 @@ export const config = {
     // - api/auth   : ログイン処理そのもの
     // - api/batch  : X-API-Key / CRON_SECRET で認証しており、
     //                ブラウザのセッションを持たない cron から呼ばれる
-    // - _next, favicon.ico : ビルド成果物と静的ファイル
+    // - _next      : ビルド成果物
+    // - favicon.ico, icon.svg, apple-icon.png :
+    //                ブラウザがタブアイコンとして取りに来るファイル。
+    //                未ログインでも /login のタブに表示されるべきものなので、
+    //                ログイン画面へリダイレクトすると取得できなくなる
     //
     // /login は除外しない。未ログインなら通し、ログイン済みなら / へ戻す判断を
     // この middleware が行うことで、セッション判定を 1 か所に保つ。
-    '/((?!api/auth|api/batch|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/auth|api/batch|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)',
   ],
 }
