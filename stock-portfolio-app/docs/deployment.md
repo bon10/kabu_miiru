@@ -164,29 +164,32 @@ Settings > Environment Variables の **Production** に追加する。
 
 > **スキームまで正しく書くこと。** next-auth は `NEXTAUTH_URL` が `https://` で始まるかどうかでセッションクッキー名を切り替える（`__Secure-next-auth.session-token` か `next-auth.session-token` か）。`http://localhost:3300` のような値が残っていると、[middleware](../src/middleware.ts) の `getToken` が本番で書かれるクッキーとは別の名前を探すことになる。なお未設定の場合は `VERCEL` 環境変数へのフォールバックが効くため、**「設定漏れ」より「http のまま」のほうが検出しにくい**。
 
-### ログインが無限リダイレクトになる場合
+### ログインできない場合
 
-`ERR_TOO_MANY_REDIRECTS` が出たときは、まずこの URL をブラウザで開いて切り分ける（`/api/auth/*` は middleware の除外対象なのでループしない）。
+**まず Vercel のランタイムログを見る。** [middleware](../src/middleware.ts) は、セッションクッキーが届いているのに復号できなかった場合に次を出力する。
 
 ```
-{本番URL}/api/auth/session
+セッションクッキーは届いているが復号できませんでした。
 ```
 
-| 結果 | 意味 |
-| --- | --- |
-| `{"user":{...}}` | クッキーは届き、NextAuth（Node 側）は読めている。食い違いは middleware の `getToken`（Edge 側）に限定される |
-| `{}` | セッションクッキー自体が届いていない。クッキーの発行・保存側を疑う |
+これが出ていれば、原因は `NEXTAUTH_SECRET` の不一致か、古い設定で発行されたクッキーの残存に絞られる。`NEXTAUTH_SECRET` を変更した場合、変更前に発行されたクッキーはすべて復号できなくなるため、ブラウザのクッキー削除で解消する。
 
-デプロイ済みの設定は `curl` でも確認できる。`__Host-` / `__Secure-` 付きのクッキー名が返れば `NEXTAUTH_URL` は `https://` で認識されている。
+出ていなければ、そもそもクッキーが届いていない。デプロイ済みの設定を `curl` で確認する。`__Host-` / `__Secure-` 付きのクッキー名が返れば `NEXTAUTH_URL` は `https://` で認識されている。`providers` の `callbackUrl` が実際に開いているドメインと一致しているかも見る。
 
 ```bash
 curl -sS -o /dev/null -D - {本番URL}/api/auth/csrf | grep -i set-cookie
 curl -sS {本番URL}/api/auth/providers
 ```
 
-> **ループする構造そのものについて。** 本アプリは「ログイン済みか」を 2 箇所で別々に判定している。[middleware](../src/middleware.ts) は `getToken`、[login/page.tsx](../src/app/login/page.tsx) は `getServerSession` を使う。両者の判定が食い違うと、middleware が `/login` へ送り、`/login` が `/` へ送り返して往復する。画面が一切表示されないためログもエラーも見えない。**環境変数を疑う前に、この構造が原因でありうることを思い出すこと。**
+ログイン後の状態は次で確認できる（`/api/auth/*` は middleware の除外対象なので、認証で詰まっていても開ける）。
+
+```
+{本番URL}/api/auth/session
+```
+
+> **`ERR_TOO_MANY_REDIRECTS` について。** 2026-08-26 の本番で、ログイン後に無限リダイレクトが発生した（原因は特定できないまま解消）。当時は「ログイン済みか」を [middleware](../src/middleware.ts) の `getToken` と `login/page.tsx` の `getServerSession` の **2 か所で別々に判定**しており、両者が食い違うと `/` と `/login` が互いにリダイレクトし合う構造だった。画面が一切表示されないためログもエラーも見えず、切り分けができなかった。
 >
-> 2026-08-26 に本番で発生した事例では、`NEXTAUTH_URL` は正しく `https://` で設定されており、Google のリダイレクト URI も登録済みだった。**原因を特定できないまま解消した。** 再発時は上記の切り分けから始める。
+> 現在は判定を middleware の `getToken` 1 か所に統合し、`/login` からセッション判定を削除してある。**同じ往復は構造的に発生しない。** ログイン画面へ通すか `/` へ戻すかも同じ `getToken` の結果で決まる。この統合を戻す変更（`/login` に `getServerSession` を足すなど）は、無限リダイレクトを再び持ち込むことになる。
 
 ### Google 側
 
