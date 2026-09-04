@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { todayInput } from '@/lib/date-key'
 import {
@@ -21,16 +21,25 @@ import {
 } from '@/components/ui/select'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { formatMoney } from '@/lib/utils'
-import { calcDividendReceipt, DIVIDEND_CALC_MESSAGES } from '@/lib/dividend'
+import {
+  calcDividendReceipt,
+  resolveDividendTax,
+  DIVIDEND_CALC_MESSAGES,
+  DIVIDEND_TAX_MESSAGES,
+} from '@/lib/dividend'
 
 export interface DividendStockOption {
   id: number
   stockName: string
   code: string
+  // 受取通貨の初期値を決めるためだけに持つ（米国株はドル受取が既定）。
+  // 保有株数は持たない：配当合計に掛けるのは明細の数量で、現在の保有株数は使わない（ADR 0015）。
   market: string
-  // 現在の保有株数（Transaction 由来の派生キャッシュ：ADR 0003）。
-  // 入力された 1 株あたり配当金にこの株数を掛けて受取総額を求める。
-  sharesHeld: number
+}
+
+// 数値入力欄の値を API に渡す形へ直す。空欄は「未入力」として null にし、0 と区別する。
+function toOptionalNumber(input: string): number | null {
+  return input.trim() === '' ? null : Number(input)
 }
 
 // 配当種別は表示専用ラベルで集計には使わない。証券会社が期を示さず判別できないこともあるため未指定を許す。
@@ -62,9 +71,14 @@ export function DividendFormDialog({
   const [stockId, setStockId] = useState<string>(
     defaultStockId ? String(defaultStockId) : ''
   )
-  // 証券会社から通知される「1 株あたり配当金」をそのまま入力する。
-  // 受取総額は保存時に保有株数を掛けて算出するため、ここでは総額を入力しない。
+  // 入力は証券会社の配当明細の写し（ADR 0015）。明細の「単価」が 1 株あたり配当金、
+  // 「数量」が shares で、掛け合わせた配当・分配金合計はフォームが自動表示する。
   const [dividendPerShare, setDividendPerShare] = useState('')
+  const [shares, setShares] = useState('')
+  // 税額合計と受取金額は片方だけの入力でよい。もう片方は配当合計から引いて自動で埋まる
+  // （米国株は明細の税額合計が空欄なので、受取金額だけ写す運用になる）。
+  const [taxAmount, setTaxAmount] = useState('')
+  const [netAmount, setNetAmount] = useState('')
   const [currency, setCurrency] = useState<Currency>('JPY')
   // 通貨をユーザーが手動で選び直したか。選び直した後に銘柄を変えても勝手に上書きしない。
   const [currencyTouched, setCurrencyTouched] = useState(false)
@@ -91,6 +105,11 @@ export function DividendFormDialog({
       const initialStockId = defaultStockIdRef.current
       setStockId(initialStockId ? String(initialStockId) : '')
       setDividendPerShare('')
+      setTaxAmount('')
+      setNetAmount('')
+      // 数量は空欄から始める。現在の保有株数を初期値に入れると、権利確定後に売買していても
+      // 数字が埋まっていて正しそうに見え、明細を確認せず保存してしまうため（ADR 0015）
+      setShares('')
       const initialMarket = stocksRef.current.find(
         (s) => s.id === initialStockId
       )?.market
@@ -102,21 +121,25 @@ export function DividendFormDialog({
     }
   }, [open])
 
-  // 選択中の銘柄と、その現在保有株数・想定受取総額（1 株配当 × 保有株数）を導出する。
-  const selectedStock = useMemo(
-    () => stocks.find((s) => String(s.id) === stockId),
-    [stocks, stockId]
-  )
-  const sharesHeld = selectedStock?.sharesHeld ?? 0
+  // 明細の入力値から配当合計・税額合計・受取金額を組み立てる。
   const perShareValue = Number(dividendPerShare)
-  // 想定受取額の計算・検証はサーバーと同じ calcDividendReceipt に委ねる（計算の二重化を避ける）。
-  // 実際の保存額はサーバー側の最新保有株数で確定するため、ここでの値は「想定」。
-  const calc = calcDividendReceipt(perShareValue, sharesHeld)
+  const sharesValue = Number(shares)
+  // 計算・検証はサーバーと同じ純粋関数に委ねる（計算の二重化を避ける）。
+  const calc = calcDividendReceipt(perShareValue, sharesValue)
+  const tax = calc.ok
+    ? resolveDividendTax(
+        calc.total,
+        toOptionalNumber(taxAmount),
+        toOptionalNumber(netAmount)
+      )
+    : null
 
   // 銘柄を選ぶと受取通貨の初期値をその市場に合わせる。
   // ただしユーザーが通貨を明示的に変更済みなら尊重して上書きしない。
   function handleStockChange(nextStockId: string) {
     setStockId(nextStockId)
+    // 銘柄を選び直したら数量は空欄に戻す（前の銘柄の数量を持ち越さない）
+    setShares('')
     if (!currencyTouched) {
       const market = stocks.find((s) => String(s.id) === nextStockId)?.market
       setCurrency(defaultCurrencyForMarket(market))
@@ -135,6 +158,10 @@ export function DividendFormDialog({
       setError(DIVIDEND_CALC_MESSAGES[calc.error])
       return
     }
+    if (tax && !tax.ok) {
+      setError(DIVIDEND_TAX_MESSAGES[tax.error])
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -143,8 +170,12 @@ export function DividendFormDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           stockId: Number(stockId),
-          // 1 株あたり配当金のみ送り、受取総額はサーバー側で保有株数を掛けて確定する。
+          // 明細の写しをそのまま送る。配当合計・税額・受取金額の確定はサーバー側でも
+          // 同じ純粋関数を通すため、ここでは入力値だけを渡す。
           dividendPerShare: perShareValue,
+          shares: sharesValue,
+          taxAmount: toOptionalNumber(taxAmount),
+          netAmount: toOptionalNumber(netAmount),
           currency,
           paymentDate,
           // 未指定センチネルは送らず null にして、サーバー側で種別なし（NULL）として保存させる。
@@ -174,7 +205,7 @@ export function DividendFormDialog({
           <DialogHeader>
             <DialogTitle>受取配当を追加</DialogTitle>
             <DialogDescription>
-              1株あたりの配当金を入力すると、保有株数を掛けた受取総額を記録します（銘柄マスタの予想配当とは別物）。
+              証券会社の配当明細をそのまま写します。数量は現在の保有株数ではなく明細の数量を入力してください（配当は権利確定日の株数で決まるため）。税額合計か受取金額のどちらかを入れると残りが埋まります。
             </DialogDescription>
           </DialogHeader>
 
@@ -214,14 +245,54 @@ export function DividendFormDialog({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">1株あたり配当金</label>
+                <label className="text-sm font-medium">単価（1株あたり）</label>
+                {/* 明細の単価は小数第5位まで出ることがある（例: JEPQ 0.70497）ため
+                    刻みを設けず any にする。step を固定すると端数のある単価を弾いてしまう */}
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step="0.01"
+                  step="any"
                   min="0"
                   value={dividendPerShare}
                   onChange={(e) => setDividendPerShare(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">数量</label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min="0"
+                  placeholder="明細の数量"
+                  value={shares}
+                  onChange={(e) => setShares(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">税額合計（任意）</label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min="0"
+                  placeholder="明細が「-」なら空欄"
+                  value={taxAmount}
+                  onChange={(e) => setTaxAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">受取金額（任意）</label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min="0"
+                  value={netAmount}
+                  onChange={(e) => setNetAmount(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
@@ -235,17 +306,27 @@ export function DividendFormDialog({
             </div>
 
             {stockId && (
-              <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
                 <span className="text-muted-foreground">
-                  保有株数:{' '}
+                  配当・分配金合計:{' '}
                   <span className="font-medium text-foreground">
-                    {sharesHeld.toLocaleString()} 株
+                    {calc.ok ? formatMoney(calc.total, currency) : '—'}
                   </span>
                 </span>
                 <span className="text-muted-foreground">
-                  想定受取額:{' '}
+                  税額合計:{' '}
+                  <span className="font-medium text-foreground">
+                    {tax?.ok && tax.tax !== null
+                      ? formatMoney(tax.tax, currency)
+                      : '—'}
+                  </span>
+                </span>
+                <span className="text-muted-foreground">
+                  受取金額:{' '}
                   <span className="font-semibold text-blue-600">
-                    {calc.ok ? formatMoney(calc.total, currency) : '—'}
+                    {tax?.ok && tax.net !== null
+                      ? formatMoney(tax.net, currency)
+                      : '—'}
                   </span>
                 </span>
               </div>

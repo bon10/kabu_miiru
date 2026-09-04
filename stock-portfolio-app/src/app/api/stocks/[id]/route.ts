@@ -4,6 +4,7 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { getMarketFromCode } from '@/lib/utils'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy } from '@/lib/currency'
+import { toNullableNumber } from '@/lib/dividend'
 
 export async function GET(
   request: NextRequest,
@@ -75,7 +76,12 @@ export async function GET(
       })),
       dividendHistory: stock.dividendHistory.map(d => ({
         ...d,
-        dividendAmount: Number(d.dividendAmount)
+        // 明細の 4 項目（数量 / 配当合計 / 税額合計 / 受取金額）をそのまま返す（ADR 0015）。
+        // 追加前のレコードは shares / taxAmount / netAmount が null で返る。
+        dividendAmount: Number(d.dividendAmount),
+        shares: toNullableNumber(d.shares),
+        taxAmount: toNullableNumber(d.taxAmount),
+        netAmount: toNullableNumber(d.netAmount)
       })),
       priceHistory: stock.priceHistory.map(p => ({
         ...p,

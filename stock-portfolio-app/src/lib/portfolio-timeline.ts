@@ -4,6 +4,7 @@ import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
 import { resolveRange, type TimelineRange } from '@/lib/timeline-range'
 import { TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
+import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
 
 // ポートフォリオ推移の再構成（ADR 0009）。
 //
@@ -94,7 +95,14 @@ export interface TimelineInput {
     fee: number
     transactionDate: Date
   }>
-  dividends: Array<{ paymentDate: Date; dividendAmount: number; currency: string }>
+  // 配当は手取り（受取金額）で積む。dividendAmount は税引前なので、受取金額を持たない
+  // 旧レコードだけ税引前で代用する（ADR 0015）。
+  dividends: Array<{
+    paymentDate: Date
+    dividendAmount: number
+    netAmount: number | null
+    currency: string
+  }>
   stocks: StockMeta[]
   // 銘柄 ID → 暦日(getTime) → 終値（建値通貨）
   closeMap: Map<number, Map<number, number>>
@@ -198,10 +206,10 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
       }
     }
 
-    // その日までの受取配当を積む。受取通貨で判定して円換算する（ADR 0006）
+    // その日までの受取配当を積む。金額は手取り（ADR 0015）、受取通貨で判定して円換算する（ADR 0006）
     while (divIndex < dividends.length && toDateKey(dividends[divIndex].paymentDate) <= day) {
       const d = dividends[divIndex++]
-      const amount = d.dividendAmount
+      const amount = netDividendAmount(d.dividendAmount, d.netAmount)
       dividendsJpy += d.currency === 'USD' && rate !== null ? amount * rate : amount
     }
 
@@ -298,6 +306,7 @@ export async function buildPortfolioTimeline(range: TimelineRange): Promise<Time
     dividends: dividends.map((d) => ({
       paymentDate: d.paymentDate,
       dividendAmount: Number(d.dividendAmount),
+      netAmount: toNullableNumber(d.netAmount),
       currency: d.currency,
     })),
     stocks,

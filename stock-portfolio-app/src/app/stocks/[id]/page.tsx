@@ -55,7 +55,12 @@ interface Transaction {
 
 interface DividendHistory {
   id: number
+  // dividendAmount は配当・分配金合計（税引前）。netAmount が受取金額（手取り）で、
+  // ADR 0015 より前に登録したレコードは shares / taxAmount / netAmount を持たず null。
   dividendAmount: number
+  shares: number | null
+  taxAmount: number | null
+  netAmount: number | null
   currency: string
   paymentDate: string
   dividendType: string | null
@@ -119,7 +124,6 @@ export default function StockDetailPage() {
               stockName: stock.stockName,
               code: stock.code,
               market: stock.market,
-              sharesHeld: stock.sharesHeld,
             },
           ]
         : [],
@@ -561,6 +565,9 @@ export default function StockDetailPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>配当種別</TableHead>
+                  <TableHead className="text-right">数量</TableHead>
+                  <TableHead className="text-right">配当合計</TableHead>
+                  <TableHead className="text-right">税額</TableHead>
                   <TableHead className="text-right">受取金額</TableHead>
                   <TableHead>支払日</TableHead>
                 </TableRow>
@@ -570,7 +577,22 @@ export default function StockDetailPage() {
                   <TableRow key={dividend.id}>
                     <TableCell>{dividend.dividendType ?? '—'}</TableCell>
                     <TableCell className="text-right">
+                      {dividend.shares?.toLocaleString() ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
                       {formatMoney(dividend.dividendAmount, dividend.currency)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {dividend.taxAmount === null
+                        ? '—'
+                        : formatMoney(dividend.taxAmount, dividend.currency)}
+                    </TableCell>
+                    {/* 手取りを主に出す。受取金額を持たない旧レコードは税引前を代用表示する */}
+                    <TableCell className="text-right font-medium">
+                      {formatMoney(
+                        dividend.netAmount ?? dividend.dividendAmount,
+                        dividend.currency
+                      )}
                     </TableCell>
                     <TableCell>{formatDate(dividend.paymentDate)}</TableCell>
                   </TableRow>
