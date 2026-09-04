@@ -3,11 +3,12 @@ import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy, toJpyByCurrency } from '@/lib/currency'
 import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
+import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
 
 // ダッシュボード用サマリ API。
 // 用語は docs/2-domain/ubiquitous-language.md を参照。
 //   - expectedAnnualDividend: 予想年間配当（マスタ由来）
-//   - ytdDividendReceived: YTD 配当（実際に受け取った金額、DividendHistory 由来、ADR 0004）
+//   - ytdDividendReceived: YTD 配当（実際に受け取った手取り額、DividendHistory 由来、ADR 0004 / 0015）
 // 金額は全て円ベース。米国株のドル建て値は当日の USD/JPY レートで円換算する。
 export async function GET() {
   try {
@@ -17,7 +18,7 @@ export async function GET() {
       prisma.stock.findMany(),
       prisma.dividendHistory.findMany({
         where: { paymentDate: { gte: yearStart } },
-        select: { dividendAmount: true, currency: true },
+        select: { dividendAmount: true, netAmount: true, currency: true },
       }),
       getCurrentUsdJpyRate(),
     ])
@@ -37,9 +38,17 @@ export async function GET() {
     const totalCurrentValue = holdingStocks.reduce((sum, stock) => sum + currentValueJpy(stock), 0)
     const totalProfitLoss = stocks.reduce((sum, stock) => sum + profitLossJpy(stock), 0)
     const expectedAnnualDividend = stocks.reduce((sum, stock) => sum + dividendJpy(stock), 0)
-    // 受取配当は配当ごとの受取通貨で保存されているため、USD 建ては当日レートで円換算して合算する
+    // 受取配当は税金を引いた手取り（受取金額）で合算する（ADR 0015）。受取金額を持たない
+    // 旧レコードは税引前で代用する。配当ごとの受取通貨で保存されているため USD 建ては
+    // 当日レートで円換算してから足す。
     const ytdDividendReceived = ytdDividends.reduce(
-      (sum, d) => sum + toJpyByCurrency(Number(d.dividendAmount), d.currency, usdJpyRate),
+      (sum, d) =>
+        sum +
+        toJpyByCurrency(
+          netDividendAmount(Number(d.dividendAmount), toNullableNumber(d.netAmount)),
+          d.currency,
+          usdJpyRate,
+        ),
       0,
     )
     const totalProfitLossRate = totalInvestment > 0 ? totalProfitLoss / totalInvestment : 0

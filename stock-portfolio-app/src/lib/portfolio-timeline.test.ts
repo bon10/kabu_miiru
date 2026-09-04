@@ -248,8 +248,8 @@ describe('computeTimeline', () => {
       input({
         transactions: [buy(1, '2025-01-03', 10, 100)],
         dividends: [
-          { paymentDate: day('2025-01-04'), dividendAmount: 500, currency: 'JPY' },
-          { paymentDate: day('2025-01-05'), dividendAmount: 300, currency: 'JPY' },
+          { paymentDate: day('2025-01-04'), dividendAmount: 500, netAmount: null, currency: 'JPY' },
+          { paymentDate: day('2025-01-05'), dividendAmount: 300, netAmount: null, currency: 'JPY' },
         ],
         closeMap: closes(1, { '2025-01-03': 100, '2025-01-04': 100, '2025-01-05': 100 }),
       }),
@@ -257,12 +257,43 @@ describe('computeTimeline', () => {
     expect(r.points.map((p) => p.cumulativeDividends)).toEqual([0, 500, 800])
   })
 
+  it('受取金額を持つ配当は手取りで累計する（ADR 0015）', () => {
+    const r = computeTimeline(
+      input({
+        transactions: [buy(1, '2025-01-03', 10, 100)],
+        dividends: [
+          // 税引前 1,000 / 税額 203 / 受取 797。累計に乗るのは手取りの 797
+          { paymentDate: day('2025-01-04'), dividendAmount: 1000, netAmount: 797, currency: 'JPY' },
+        ],
+        closeMap: closes(1, { '2025-01-03': 100, '2025-01-04': 100 }),
+        today: day('2025-01-04'),
+      }),
+    )
+    expect(r.points.map((p) => p.cumulativeDividends)).toEqual([0, 797])
+  })
+
+  it('受取金額を持たない旧レコードは税引前で累計する（ADR 0015）', () => {
+    const r = computeTimeline(
+      input({
+        transactions: [buy(1, '2025-01-03', 10, 100)],
+        dividends: [
+          { paymentDate: day('2025-01-04'), dividendAmount: 1000, netAmount: null, currency: 'JPY' },
+        ],
+        closeMap: closes(1, { '2025-01-03': 100, '2025-01-04': 100 }),
+        today: day('2025-01-04'),
+      }),
+    )
+    expect(r.points.map((p) => p.cumulativeDividends)).toEqual([0, 1000])
+  })
+
   it('USD 建ての受取配当はその日のレートで円換算する', () => {
     const r = computeTimeline(
       input({
         stocks: [US],
         transactions: [buy(2, '2025-01-03', 10, 100)],
-        dividends: [{ paymentDate: day('2025-01-03'), dividendAmount: 2, currency: 'USD' }],
+        dividends: [
+          { paymentDate: day('2025-01-03'), dividendAmount: 2, netAmount: null, currency: 'USD' },
+        ],
         closeMap: closes(2, { '2025-01-03': 100 }),
         rateMap: new Map([[key('2025-01-03'), 150]]),
         today: day('2025-01-03'),
@@ -330,8 +361,8 @@ describe('computeTimeline', () => {
       input({
         transactions: [buy(1, '2024-11-01', 10, 100)],
         dividends: [
-          { paymentDate: day('2024-11-10'), dividendAmount: 500, currency: 'JPY' },
-          { paymentDate: day('2025-01-02'), dividendAmount: 300, currency: 'JPY' },
+          { paymentDate: day('2024-11-10'), dividendAmount: 500, netAmount: null, currency: 'JPY' },
+          { paymentDate: day('2025-01-02'), dividendAmount: 300, netAmount: null, currency: 'JPY' },
         ],
         closeMap: closes(1, { '2024-11-01': 100 }),
         today: day('2025-01-05'),

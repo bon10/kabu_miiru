@@ -141,16 +141,19 @@ export default function DashboardClient({ summary }: DashboardClientProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              今年の配当（受取）
+              今年の配当（受取・手取り）
             </CardTitle>
             <Coins className="h-4 w-4 text-yellow-600" />
           </CardHeader>
           <CardContent>
+            {/* 実績は税金を引いた手取り（ADR 0015）、予想年間配当は銘柄マスタ由来の
+                税引前。基準が違うので単純比較できないことをラベルで示す */}
             <div className="text-2xl font-bold">
               {formatCurrency(summary.ytdDividendReceived)}
             </div>
             <p className="text-xs text-muted-foreground">
-              予想年間配当 {formatCurrency(summary.expectedAnnualDividend)}
+              予想年間配当（税引前）{' '}
+              {formatCurrency(summary.expectedAnnualDividend)}
             </p>
           </CardContent>
         </Card>

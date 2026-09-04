@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
+import { toNullableNumber } from '@/lib/dividend'
 
 export async function GET(
   _request: NextRequest,
@@ -31,6 +32,9 @@ export async function GET(
         stockCode: dividend.stock.code,
         holdingCompany: dividend.stock.holdingCompany,
         dividendAmount: Number(dividend.dividendAmount),
+        shares: toNullableNumber(dividend.shares),
+        taxAmount: toNullableNumber(dividend.taxAmount),
+        netAmount: toNullableNumber(dividend.netAmount),
         currency: dividend.currency,
         paymentDate: dividend.paymentDate.toISOString(),
         dividendType: dividend.dividendType,

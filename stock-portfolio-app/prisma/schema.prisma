@@ -140,10 +140,20 @@ model Transaction {
 }
 
 // 配当履歴
+// 証券会社の配当明細 1 行を写し取る（数量・配当合計・税額合計・受取金額）。ADR 0015。
 model DividendHistory {
   id              Int       @id @default(autoincrement())
   stockId         Int
-  dividendAmount  Decimal   @db.Decimal(15,2)  // 受取通貨（currency）建ての金額。集計時に当日レートで円換算する
+  // 配当・分配金合計（税引前）。受取通貨（currency）建ての金額で、集計時に当日レートで円換算する
+  dividendAmount  Decimal   @db.Decimal(15,2)
+  // 明細の数量（＝配当計算の対象株数）。ADR 0015 で追加。値を持たない旧レコードがあるため NULL 可。
+  // 登録時の Stock.sharesHeld ではなく明細の数量を写すので、売却済み銘柄の配当も記録できる
+  shares          Decimal?  @db.Decimal(15,4)
+  // 税額合計。受取通貨建て。ADR 0015 で追加（NULL = 税額不明。旧レコードは全て NULL）
+  taxAmount       Decimal?  @db.Decimal(15,2)
+  // 受取金額（手取り）。受取通貨建て。ADR 0015 で追加。集計はこの値を使い、
+  // NULL（旧レコード）のときだけ dividendAmount で代用する
+  netAmount       Decimal?  @db.Decimal(15,2)
   currency        String    @default("JPY")    // 受取通貨（JPY / USD）。米国株でも証券会社の円受取があるため銘柄の市場とは独立に持つ
   // 受取日は暦日（時刻を持たない）。ADR 0012 / docs/2-domain/time-and-dates.md
   paymentDate     DateTime  @db.Date
