@@ -7,6 +7,7 @@
 - [ADR 0002 配当を売買取引から分離](../7-adr/0002-dividend-as-separate-entity.md)
 - [ADR 0003 保有株数は Transaction を Source of Truth](../7-adr/0003-transaction-as-source-of-truth.md)
 - [ADR 0004 配当集計はカレンダー年基準](../7-adr/0004-dividend-period-calendar-year.md)
+- [ADR 0015 受取配当は配当明細を写して保存し集計は手取り基準](../7-adr/0015-dividend-statement-fields-and-net-basis.md)
 - [ADR 0005 米国株は当日レートで円換算](../7-adr/0005-us-stock-jpy-conversion.md)
 - [ADR 0008 移行データの保有は初期残高 Transaction で表す](../7-adr/0008-initial-balance-transaction.md)
 - [ADR 0009 ポートフォリオ推移は日次終値から再構成](../7-adr/0009-portfolio-timeline-from-daily-close.md)
@@ -125,7 +126,7 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 ## 配当関連
 
-配当には**性質の異なる 3 つの値**が混在するため、実装・UI・議論では厳密に区別する。
+配当には**性質の異なる値**が混在するため、実装・UI・議論では厳密に区別する。とくに「予想（マスタ由来・税引前）」と「実績（明細由来・手取り）」を混ぜないこと。
 
 ### 予想配当・1 株配当金（Expected Dividend / Dividend Per Share）
 
@@ -143,7 +144,17 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 実際に受け取った配当金の 1 件の記録。支払日・金額・受取通貨・種別を持つ。**実データ**。エンティティ：`DividendHistory`。ADR 0002 により Transaction とは分離。
 
-**入力と金額の確定**：ユーザーは証券会社から通知される **1 株あたり配当金** を入力する（総額を直接入力しない）。受取総額（`dividendAmount`）は保存時にサーバー側で現在の保有株数（`Stock.sharesHeld`）を掛けて確定する（BR-202）。予想配当の DPS（`Stock.dividendPerShare`）とは入力経路も意味も別で、受取配当の DPS はレコードには保存せず総額のみを保持する。
+**入力と金額の確定**：証券会社の**配当明細 1 行をそのまま写す**（ADR 0015）。明細の 4 項目がそのままレコードの列になる（BR-202）。
+
+| 明細の列 | 実装フィールド | 内容 |
+|---|---|---|
+| 単価 | （保存しない） | 1 株あたり配当金。予想配当の DPS（`Stock.dividendPerShare`）とは入力経路も意味も別 |
+| 数量 | `DividendHistory.shares` | 配当計算の対象株数（＝権利確定日の株数）。**明細から入力する必須項目**で、現在の保有株数（`Stock.sharesHeld`）は使わない |
+| 配当・分配金合計 | `DividendHistory.dividendAmount` | **税引前**。`単価 × 数量` |
+| 税額合計 | `DividendHistory.taxAmount` | 明細が「-」なら未入力でよい |
+| 受取金額 | `DividendHistory.netAmount` | **手取り**。集計の基準 |
+
+税額合計と受取金額は**どちらか片方**を入力すればもう片方が `配当合計 − 入力値` で埋まる。国内株は税額合計から、米国株は受取金額から入力することになる（米国株は明細の税額合計が空欄で、受取金額だけが減っているため）。
 
 **種別（dividendType）** は表示専用ラベルで、集計（年計・半期）には使わない（集計は支払日基準：ADR 0004）。**任意**であり、証券会社の画面に期の記載がなく判別できないときは未指定（NULL）で保存できる。指定する場合は次のいずれか：
 
@@ -154,13 +165,19 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 > 注意：投資信託でいう「**特別分配金**」は*元本払戻金*を指す税務用語で、本アプリの種別 `特別`（＝臨時・特別配当）とは**別物**。ETF/投信の通常分配は `特別` ではなく `分配金` を使う。
 
+### 手取り配当（Net Dividend）
+
+税金を引いた後の受取配当額。実装フィールド：`DividendHistory.netAmount`。**受取配当の集計はすべてこの手取りが基準**（ADR 0015 / BR-203）。ADR 0015 より前に登録したレコードは `netAmount` を持たないため、その行だけ税引前（`dividendAmount`）で代用する。実装：[netDividendAmount](../../src/lib/dividend.ts)。
+
+「税引前」と対で使う。UI で両方を並べるときは **「受取金額（手取り）」/「配当・分配金合計（税引前）」** と明細の呼び方に合わせる。
+
 ### YTD 配当（Year-to-date Dividend）
 
-今年（1 月 1 日 0:00 〜現時点）に受け取った配当の合計額。カレンダー年基準（ADR 0004）。
+今年（1 月 1 日 0:00 〜現時点）に受け取った配当の合計額。**手取り基準**（ADR 0015）。カレンダー年基準（ADR 0004）。
 
 ### 年間配当合計（Annual Dividend Total）
 
-指定した年の 1 月 1 日 〜 12 月 31 日に受け取った配当の合計。カレンダー年基準（ADR 0004）。
+指定した年の 1 月 1 日 〜 12 月 31 日に受け取った配当の合計。**手取り基準**（ADR 0015）。カレンダー年基準（ADR 0004）。
 
 ### 半期配当（Half-Year Dividend）
 
@@ -282,7 +299,9 @@ TSV から一括で取り込んだ保有は、いつ買ったかの記録を持�
 | 予想配当     | 「予想配当」or「1株配当金（予想）」 | `Stock.dividendPerShare`          |
 | 予想年間配当 | 「予想年間配当」                    | `Stock.dividendAmount`            |
 | 受取配当     | 「受取配当」or「配当受取」          | `DividendHistory`                 |
-| YTD 配当     | 「今年の配当」or「YTD 配当」        | `DividendHistory` 集計            |
+| 手取り配当   | 「受取金額（手取り）」              | `DividendHistory.netAmount`       |
+| 税引前配当   | 「配当・分配金合計（税引前）」      | `DividendHistory.dividendAmount`  |
+| YTD 配当     | 「今年の配当」or「YTD 配当」        | `DividendHistory` 集計（手取り）  |
 | 保有株数     | 「保有株数」                        | Transaction 集約                  |
 | 平均取得単価 | 「平均取得単価」                    | Transaction 集約                  |
 | 投資額       | 「投資額」                          | Transaction 集約                  |

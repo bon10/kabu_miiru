@@ -90,7 +90,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **PriceHistory**: 価格履歴（市場セッション対応、場中の値を含む）
 - **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）
 - **ExchangeRate**: USD/JPY の日次レート（`rateDate` ユニーク、ADR 0005 / 0008）
-- **DividendHistory**: 配当履歴
+- **DividendHistory**: 受取配当。証券会社の配当明細 1 行を写す（数量・配当合計・税額合計・受取金額。集計は手取り基準、ADR 0015）
 - **PortfolioSummary**: ポートフォリオサマリー（キャッシュ用）
 
 ## API機能
