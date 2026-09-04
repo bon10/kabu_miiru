@@ -33,9 +33,15 @@ interface DividendRow {
   stockName: string
   stockCode: string
   holdingCompany: string
+  // dividendAmount は配当・分配金合計（税引前）。netAmount が受取金額（手取り）で、
+  // ADR 0015 より前に登録したレコードは shares / taxAmount / netAmount を持たず null。
   dividendAmount: number
+  shares: number | null
+  taxAmount: number | null
+  netAmount: number | null
   currency: string
   dividendAmountJpy: number
+  netAmountJpy: number
   paymentDate: string
   dividendType: string | null
 }
@@ -49,7 +55,10 @@ interface DividendsResponse {
 interface SummaryResponse {
   data: {
     year: number
+    // yearTotal は手取り基準（ADR 0015）。税引前と税額は内訳として別に返る
     yearTotal: number
+    yearGrossTotal: number
+    yearTaxTotal: number
     firstHalfTotal: number
     secondHalfTotal: number
     prevYearTotal: number
@@ -113,7 +122,6 @@ export default function DividendsClient() {
         stockName: s.stockName,
         code: s.code,
         market: s.market,
-        sharesHeld: s.sharesHeld,
       })),
     [stocksData]
   )
@@ -139,8 +147,8 @@ export default function DividendsClient() {
         <div>
           <h1 className="text-3xl font-bold">配当（受取）管理</h1>
           <p className="text-muted-foreground">
-            実際に受け取った配当金の記録。年・半期はカレンダー年基準（ADR
-            0004）。
+            実際に受け取った配当金の記録。金額は税金を引いた手取り（ADR
+            0015）、年・半期はカレンダー年基準（ADR 0004）。
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -182,10 +190,16 @@ export default function DividendsClient() {
               {summary ? formatCurrency(summary.yearTotal) : '-'}
             </div>
             {summary && (
-              <p className="text-xs text-muted-foreground mt-1">
-                前年比 {summary.yearOverYearDiff >= 0 ? '+' : ''}
-                {formatCurrency(summary.yearOverYearDiff)}
-              </p>
+              <>
+                <p className="text-xs text-muted-foreground mt-1">
+                  前年比 {summary.yearOverYearDiff >= 0 ? '+' : ''}
+                  {formatCurrency(summary.yearOverYearDiff)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  税引前 {formatCurrency(summary.yearGrossTotal)} / 税額{' '}
+                  {formatCurrency(summary.yearTaxTotal)}
+                </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -291,7 +305,7 @@ export default function DividendsClient() {
                   <TableHead>銘柄</TableHead>
                   <TableHead>証券会社</TableHead>
                   <TableHead>種別</TableHead>
-                  <TableHead className="text-right">金額</TableHead>
+                  <TableHead className="text-right">受取金額</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -314,10 +328,18 @@ export default function DividendsClient() {
                       )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatMoney(d.dividendAmount, d.currency)}
+                      {/* 手取りを主に出す。受取金額を持たない旧レコードは税引前を代用表示する */}
+                      {formatMoney(d.netAmount ?? d.dividendAmount, d.currency)}
                       {d.currency !== 'JPY' && (
                         <div className="text-xs font-normal text-muted-foreground">
-                          ≈ {formatCurrency(d.dividendAmountJpy)}
+                          ≈ {formatCurrency(d.netAmountJpy)}
+                        </div>
+                      )}
+                      {d.netAmount !== null && (
+                        <div className="text-xs font-normal text-muted-foreground">
+                          税引前 {formatMoney(d.dividendAmount, d.currency)}
+                          {d.taxAmount !== null &&
+                            ` / 税額 ${formatMoney(d.taxAmount, d.currency)}`}
                         </div>
                       )}
                     </TableCell>
