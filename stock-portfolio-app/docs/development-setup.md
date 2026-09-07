@@ -54,8 +54,8 @@ YAHOO_FINANCE_API_KEY=""
 # データベースコンテナを起動
 docker-compose up -d mysql
 
-# データベーススキーマを適用
-pnpm db:push
+# データベーススキーマを適用（ADR 0016：db:push は使わない）
+pnpm db:deploy
 ```
 
 #### ローカルMySQLを使用する場合
@@ -67,8 +67,8 @@ mysql -u root -p
 # データベースを作成
 CREATE DATABASE stock_portfolio;
 
-# Prismaスキーマを適用
-pnpm db:push
+# Prismaスキーマを適用（ADR 0016：db:push は使わない）
+pnpm db:deploy
 ```
 
 ### 5. 開発サーバーの起動
@@ -91,15 +91,21 @@ pnpm db:studio
 
 ### マイグレーション
 
-スキーマ変更時：
+スキーマ変更は Prisma Migrate で行う（ADR 0016）。`db:push` は使わない。
 
 ```bash
-# 開発環境での迅速な反映
-pnpm db:push
+# 1. schema.prisma を編集したあと、DB との差分から SQL を作る（DB は変更しない）
+mkdir -p prisma/migrations/<連番>_<名前>
+pnpm db:diff > prisma/migrations/<連番>_<名前>/migration.sql
 
-# 本番環境用のマイグレーションファイル生成
-pnpm db:migrate --name "migration_name"
+# 2. DB に当てる（適用済みは飛ばされる）
+pnpm db:deploy
+
+# 適用状況の確認
+pnpm db:status
 ```
+
+> `DATABASE_URL` が本番（TiDB Cloud）を向いている場合、**`pnpm db:migrate` / `db:push` / `db:reset` は打たないこと。** リセットや意図しない反映につながる。
 
 ### データベースリセット
 
@@ -238,11 +244,10 @@ git commit -m "feat: add new feature"
 # schema.prismaを編集
 # ...
 
-# 変更を適用
-pnpm db:push
-
-# 本番用マイグレーション生成
-pnpm db:migrate --name "add_new_table"
+# マイグレーションを作って当てる（ADR 0016）
+mkdir -p prisma/migrations/<連番>_<名前>
+pnpm db:diff > prisma/migrations/<連番>_<名前>/migration.sql
+pnpm db:deploy
 ```
 
 ### 3. API開発

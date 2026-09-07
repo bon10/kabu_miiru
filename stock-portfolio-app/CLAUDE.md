@@ -26,10 +26,14 @@ pnpm install
 **データベース操作:**
 ```bash
 pnpm db:generate            # Prismaクライアントの生成
-pnpm db:push                # データベースへのスキーマ変更の反映
+pnpm db:diff                # schema.prisma と DB の差分から SQL を作る（DB は変更しない）
+pnpm db:deploy              # マイグレーションを DB に当てる
+pnpm db:status              # マイグレーションの適用状況を確認
 pnpm db:studio              # データベースGUIの起動
-pnpm db:reset               # データベースのリセット
 ```
+
+**スキーマ変更は Prisma Migrate で行う（ADR 0016）。`db:push` は使わない。**
+`.env` の `DATABASE_URL` は本番（TiDB Cloud）を向いているため、**`pnpm db:migrate` / `db:push` / `db:reset` は打たないこと**（リセットや意図しない反映につながる）。手順は `docs/development-setup.md` を参照。
 
 **Docker操作:**
 ```bash
@@ -179,7 +183,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - 日付を扱うテストは `dateKeyOf` か Z 付き ISO 文字列で組み立てる（ローカル暦日で書くと実行環境の TZ に依存する）
 
 ### データベース設計
-- **MySQL 8.0**: ローカル開発（docker-compose）
+- **MySQL 8.0**: ローカル開発用の docker-compose 定義（現在は使っておらず、`DATABASE_URL` は本番 TiDB を向いている。ADR 0016）
 - **TiDB Cloud Starter**: 本番。MySQL 互換のため Prisma スキーマは共通（ADR 0013）
 - **Prisma ORM**: スキーマファーストな設計
 - **インデックス**: パフォーマンスを考慮したインデックス設計

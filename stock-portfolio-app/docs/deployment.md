@@ -40,14 +40,21 @@ mysql://xxxxx.root:PASSWORD@gateway01.xxxx.prod.aws.tidbcloud.com:4000/stock_por
 
 ### スキーマを作る
 
-ローカルから TiDB を向けて `db:push` する。
+Prisma Migrate で当てる（ADR 0016）。`db:push` は使わない。
 
 ```bash
 cd stock-portfolio-app
-DATABASE_URL='mysql://...tidbcloud.com:4000/stock_portfolio?sslaccept=strict' pnpm db:push
+pnpm db:deploy      # prisma migrate deploy。適用済みのマイグレーションは飛ばされる
+pnpm db:status      # 適用状況の確認
 ```
 
-> `.env` の `DATABASE_URL` は書き換えず、コマンドの前に付けて一時的に上書きする。ローカル開発をローカル MySQL のまま続けられる。
+`.env` の `DATABASE_URL` が本番（TiDB Cloud）を向いている前提。別の DB へ当てるなら、`.env` は書き換えずコマンドの前に付けて一時的に上書きする。
+
+```bash
+DATABASE_URL='mysql://...tidbcloud.com:4000/stock_portfolio?sslaccept=strict' pnpm db:deploy
+```
+
+> **`pnpm db:migrate`（`prisma migrate dev`）は本番に向けて打たないこと。** リセットを提案してくる場合がある（ADR 0016 のプレモーテム）。
 
 ---
 
