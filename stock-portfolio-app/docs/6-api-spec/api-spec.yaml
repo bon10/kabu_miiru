@@ -1926,8 +1926,8 @@ components:
           type: number
           format: decimal
           description: >-
-            年初来の受取配当合計。**現状は税引前・通貨換算なしで合算している**
-            （手取り基準＝ADR 0015、受取通貨での円換算＝ADR 0006 への追従が未対応）
+            年初来の受取配当合計。手取り基準（ADR 0015）で、受取通貨ごとに
+            当日レートで円換算してから合算する（ADR 0006）
         holdings:
           type: array
           items:
@@ -1974,7 +1974,7 @@ components:
         ytdDividend:
           type: number
           format: decimal
-          description: BrokerHoldings.totalYtdDividend と同じ注意点を持つ
+          description: 年初来の受取配当。手取り基準・円換算済み
         priceUpdateStatus:
           type: string
           enum: [SUCCESS, ERROR, PENDING]

@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
-import { toJpy } from '@/lib/currency'
+import { toJpy, toJpyByCurrency } from '@/lib/currency'
+import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
 import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 
 // 証券会社別の保有銘柄ビュー。
@@ -30,15 +31,30 @@ export async function GET(request: NextRequest) {
       }),
       prisma.dividendHistory.findMany({
         where: { paymentDate: { gte: yearStart } },
-        select: { stockId: true, dividendAmount: true },
+        select: {
+          stockId: true,
+          dividendAmount: true,
+          netAmount: true,
+          currency: true,
+        },
       }),
       getCurrentUsdJpyRate(),
     ])
 
+    // 年初来配当は手取り（受取金額）基準で積む。受取金額を持たない旧レコードは
+    // 税引前で代用する（ADR 0015）。円換算は銘柄の市場ではなくレコードの受取通貨で
+    // 判定する（米国株でも証券会社の円受取があるため。ADR 0006）
     const ytdDividendByStock = new Map<number, number>()
     for (const d of dividends) {
       const prev = ytdDividendByStock.get(d.stockId) ?? 0
-      ytdDividendByStock.set(d.stockId, prev + Number(d.dividendAmount))
+      const net = netDividendAmount(
+        Number(d.dividendAmount),
+        toNullableNumber(d.netAmount),
+      )
+      ytdDividendByStock.set(
+        d.stockId,
+        prev + toJpyByCurrency(net, d.currency, usdJpyRate),
+      )
     }
 
     type HoldingRow = {
