@@ -83,6 +83,7 @@ Accepted (2026-09-03)
 - API：`POST /api/dividends` が `shares` / `taxAmount` / `netAmount` を受け取る。`GET /api/dividends` は 4 項目と `netAmountJpy` を返す。`GET /api/dividends/summary` は `yearTotal` を手取り基準にし、内訳として `yearGrossTotal` / `yearTaxTotal` を追加で返す。
 - 集計：`/api/summary` の `ytdDividendReceived`、`/api/portfolio/timeline` の `cumulativeDividends` が手取り基準になる。**同じ配当データでも本 ADR 適用後に登録した分だけ数字が下がる**。
   - 2026-10-09 追記：`/api/transactions/summary` の `totalDividend`（取引履歴画面の「今年の配当（受取）」）が手取り基準から漏れていたため揃えた。従来は税引前を集計しており、配当画面の年間受取額と一致していなかった（[ADR 0005](0005-us-stock-jpy-conversion.md) の取引履歴への適用とあわせて修正）。
+  - 2026-10-14 追記：`/api/holdings/by-broker` の `ytdDividend` / `totalYtdDividend`（保有一覧の「今年の配当」）も漏れていたため揃えた。こちらは**受取通貨での円換算も抜けていて**、ドル建ての配当を円建てにそのまま足していた（ADR 0006 にも未追従だった）。これで配当を集計する全箇所が手取り基準・円換算済みになった。
 - UI：受取配当フォームが明細と同じ並び（単価・数量・税額合計・受取金額）になり、配当合計と埋まった側の値をその場で表示する。**数量欄は空欄始まりで必須**。一覧・銘柄詳細は手取りを主に出し、税引前と税額を副次表示する。
 - `DividendStockOption`（フォームに渡す銘柄候補）から `sharesHeld` を落とした。フォームが保有株数を知る必要がなくなったため。
 - 入力欄の刻みを `step="0.01"` から `step="any"` に変えた。明細の単価は小数第5位まで出ることがある（JEPQ 0.70497）ため。
