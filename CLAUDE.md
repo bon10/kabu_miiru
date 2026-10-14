@@ -45,7 +45,8 @@ pnpm install
 ```bash
 cd stock-portfolio-app
 pnpm db:generate            # Generate Prisma client
-pnpm db:push                # Push schema changes to MySQL database
+pnpm db:deploy              # Apply migrations to the database (ADR 0016; do not use db:push)
+pnpm db:status              # Show migration status
 pnpm db:studio              # Open database GUI
 ```
 

@@ -176,22 +176,26 @@ TEXT           -- メモ、エラー内容
 
 ### Prismaマイグレーション
 
+スキーマ変更は Prisma Migrate に一本化している（[ADR 0016](../7-adr/0016-schema-changes-via-prisma-migrate.md)）。`prisma db push` は使わない。
+
 ```bash
-# スキーマ変更の適用
-pnpm db:push
+# 1. schema.prisma を編集したあと、DB との差分から SQL を作る（DB は変更しない）
+mkdir -p prisma/migrations/<連番>_<名前>
+pnpm db:diff > prisma/migrations/<連番>_<名前>/migration.sql
 
-# マイグレーションファイル生成
-pnpm db:migrate --name add_new_feature
+# 2. DB に当てる
+pnpm db:deploy
 
-# 本番環境適用
-./node_modules/.bin/prisma migrate deploy
+# 適用状況の確認
+pnpm db:status
 ```
 
 ### バージョン管理
 
-- **開発**: `prisma db push` で迅速な反映
-- **本番**: `prisma migrate` で確実な変更管理
-- **履歴**: マイグレーションファイルでの変更追跡
+- **変更の反映**: `prisma migrate deploy`（開発・本番とも同じ）
+- **履歴**: `prisma/migrations/` の SQL で追跡する。現状のスキーマは `0_init` にベースライン化済み（ADR 0016）
+- **理由**: なぜその変更をしたかは ADR に残す。マイグレーションは内容、ADR は理由という分担
+- **`prisma migrate dev` は使わない**: `DATABASE_URL` が本番を向いているため（ADR 0016）
 
 ## パフォーマンス考慮
 

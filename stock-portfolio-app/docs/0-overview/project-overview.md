@@ -69,8 +69,8 @@ cd stock-portfolio-app
 # 依存関係のインストール
 pnpm install
 
-# データベースのセットアップ
-pnpm db:push
+# データベースのセットアップ（ADR 0016：db:push は使わない）
+pnpm db:deploy
 
 # 開発サーバーの起動
 pnpm dev
@@ -79,8 +79,8 @@ pnpm dev
 ### データベース初期化
 
 ```bash
-# スキーマの適用
-pnpm db:push
+# スキーマの適用（ADR 0016：db:push は使わない）
+pnpm db:deploy
 
 # データベースの確認（Prisma Studio）
 pnpm db:studio
