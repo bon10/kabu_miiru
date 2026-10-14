@@ -22,7 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  ArrowDown,
+  ArrowUp,
   Building2,
+  ChevronsUpDown,
   Coins,
   Plus,
   RefreshCw,
@@ -37,6 +40,12 @@ import {
   formatAvgAcquisitionPrice,
   AVG_ACQUISITION_PRICE_NOTE,
 } from '@/lib/utils'
+import {
+  nextHoldingSort,
+  sortHoldings,
+  type HoldingSort,
+  type HoldingSortKey,
+} from '@/lib/holdings-sort'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
@@ -158,12 +167,67 @@ function StockNameCell({
   )
 }
 
+// 並べ替えできる見出し。押すたびに昇順・降順が入れ替わる。
+// 並べ替えの対象列と、対象にしない列の理由は lib/holdings-sort.ts に書いてある。
+function SortableHead({
+  sortKey,
+  sort,
+  onSort,
+  align = 'right',
+  children,
+}: {
+  sortKey: HoldingSortKey
+  sort: HoldingSort
+  onSort: (key: HoldingSortKey) => void
+  align?: 'left' | 'right'
+  children: React.ReactNode
+}) {
+  const active = sort.key === sortKey
+  const Icon = !active ? ChevronsUpDown : sort.direction === 'asc' ? ArrowUp : ArrowDown
+
+  return (
+    <TableHead
+      className={align === 'right' ? 'text-right' : undefined}
+      aria-sort={
+        active
+          ? sort.direction === 'asc'
+            ? 'ascending'
+            : 'descending'
+          : 'none'
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {children}
+        <Icon
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            active ? 'text-foreground' : 'text-muted-foreground/60'
+          )}
+        />
+      </button>
+    </TableHead>
+  )
+}
+
 type ViewMode = 'by-broker' | 'flat'
+
+// 並べ替えを指定していないときの既定。表示モードごとに従来の並びを引き継ぐ
+// （フラットは投資額の大きい順、証券会社別はサーバーが返す銘柄名順）。
+const DEFAULT_SORT: Record<ViewMode, HoldingSort> = {
+  flat: { key: 'investmentAmount', direction: 'desc' },
+  'by-broker': { key: 'stockName', direction: 'asc' },
+}
 
 export default function HoldingsClient() {
   const [viewMode, setViewMode] = useState<ViewMode>('by-broker')
   const [includeZero, setIncludeZero] = useState(false)
   const [newStockOpen, setNewStockOpen] = useState(false)
+  // null はユーザーが見出しを押していない状態。表示モードごとの既定で並べる。
+  const [sort, setSort] = useState<HoldingSort | null>(null)
 
   const { data, isLoading, mutate } = useSWR<ApiResponse>(
     `/api/holdings/by-broker?includeZero=${includeZero}`,
@@ -174,14 +238,31 @@ export default function HoldingsClient() {
 
   const brokers = useMemo(() => data?.data.brokers ?? [], [data])
 
+  const effectiveSort = sort ?? DEFAULT_SORT[viewMode]
+  const handleSort = (key: HoldingSortKey) =>
+    setSort(nextHoldingSort(effectiveSort, key))
+
   // フラット表示のために全証券会社の holdings を平坦化してソート
-  const flatRows = useMemo(() => {
-    return brokers
-      .flatMap((b) =>
-        b.holdings.map((h) => ({ ...h, brokerName: b.brokerName }))
-      )
-      .sort((a, b) => b.investmentAmount - a.investmentAmount)
-  }, [brokers])
+  const flatRows = useMemo(
+    () =>
+      sortHoldings(
+        brokers.flatMap((b) =>
+          b.holdings.map((h) => ({ ...h, brokerName: b.brokerName }))
+        ),
+        effectiveSort
+      ),
+    [brokers, effectiveSort]
+  )
+
+  // 証券会社別表示では、グループの中だけで並べ替える（グループの順序はサーバーの投資額順）
+  const sortedBrokers = useMemo(
+    () =>
+      brokers.map((b) => ({
+        ...b,
+        holdings: sortHoldings(b.holdings, effectiveSort),
+      })),
+    [brokers, effectiveSort]
+  )
 
   return (
     <div className="space-y-6">
@@ -313,10 +394,30 @@ export default function HoldingsClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>銘柄</TableHead>
+                  <SortableHead
+                    sortKey="stockName"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                    align="left"
+                  >
+                    銘柄
+                  </SortableHead>
                   <TableHead>証券会社</TableHead>
-                  <TableHead>市場</TableHead>
-                  <TableHead className="text-right">保有株数</TableHead>
+                  <SortableHead
+                    sortKey="market"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                    align="left"
+                  >
+                    市場
+                  </SortableHead>
+                  <SortableHead
+                    sortKey="sharesHeld"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                  >
+                    保有株数
+                  </SortableHead>
                   <TableHead className="text-right">
                     <span
                       className="cursor-help underline decoration-dotted underline-offset-4"
@@ -326,10 +427,34 @@ export default function HoldingsClient() {
                     </span>
                   </TableHead>
                   <TableHead className="text-right">現在価格</TableHead>
-                  <TableHead className="text-right">投資額</TableHead>
-                  <TableHead className="text-right">評価額</TableHead>
-                  <TableHead className="text-right">評価損益</TableHead>
-                  <TableHead className="text-right">今年の配当</TableHead>
+                  <SortableHead
+                    sortKey="investmentAmount"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                  >
+                    投資額
+                  </SortableHead>
+                  <SortableHead
+                    sortKey="currentValue"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                  >
+                    評価額
+                  </SortableHead>
+                  <SortableHead
+                    sortKey="profitLoss"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                  >
+                    評価損益
+                  </SortableHead>
+                  <SortableHead
+                    sortKey="ytdDividend"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                  >
+                    今年の配当
+                  </SortableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -369,7 +494,7 @@ export default function HoldingsClient() {
           </CardContent>
         </Card>
       ) : (
-        brokers.map((broker) => (
+        sortedBrokers.map((broker) => (
           <Card key={broker.brokerName}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -404,9 +529,29 @@ export default function HoldingsClient() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>銘柄</TableHead>
-                    <TableHead>市場</TableHead>
-                    <TableHead className="text-right">保有株数</TableHead>
+                    <SortableHead
+                      sortKey="stockName"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                      align="left"
+                    >
+                      銘柄
+                    </SortableHead>
+                    <SortableHead
+                      sortKey="market"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                      align="left"
+                    >
+                      市場
+                    </SortableHead>
+                    <SortableHead
+                      sortKey="sharesHeld"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                    >
+                      保有株数
+                    </SortableHead>
                     <TableHead className="text-right">
                       <span
                         className="cursor-help underline decoration-dotted underline-offset-4"
@@ -416,10 +561,34 @@ export default function HoldingsClient() {
                       </span>
                     </TableHead>
                     <TableHead className="text-right">現在価格</TableHead>
-                    <TableHead className="text-right">投資額</TableHead>
-                    <TableHead className="text-right">評価額</TableHead>
-                    <TableHead className="text-right">評価損益</TableHead>
-                    <TableHead className="text-right">今年の配当</TableHead>
+                    <SortableHead
+                      sortKey="investmentAmount"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                    >
+                      投資額
+                    </SortableHead>
+                    <SortableHead
+                      sortKey="currentValue"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                    >
+                      評価額
+                    </SortableHead>
+                    <SortableHead
+                      sortKey="profitLoss"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                    >
+                      評価損益
+                    </SortableHead>
+                    <SortableHead
+                      sortKey="ytdDividend"
+                      sort={effectiveSort}
+                      onSort={handleSort}
+                    >
+                      今年の配当
+                    </SortableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
