@@ -13,7 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { CalendarDays, Plus, Filter, Pencil, Trash2 } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import {
+  formatCurrency,
+  formatDate,
+  formatMoney,
+  formatPrice,
+} from '@/lib/utils'
+import { currencyOfMarket, isUsStock } from '@/lib/currency'
 import {
   TransactionFormDialog,
   type StockOption,
@@ -25,11 +31,16 @@ interface TransactionRow {
   stockId: number
   stockName: string
   stockCode: string
+  // 銘柄の市場（'国内' / '米国'）。取引金額・単価・手数料の建値通貨を決める
+  market: string
   transactionType: 'BUY' | 'SELL'
   shares: number
   pricePerShare: number
+  // 取引金額・手数料は建値通貨建て。Jpy 付きは当日レートで円換算した値（ADR 0005）
   totalAmount: number
+  totalAmountJpy: number
   fee: number
+  feeJpy: number
   transactionDate: string
   memo?: string | null
 }
@@ -65,6 +76,7 @@ interface StocksResponse {
       id: number
       stockName: string
       code: string
+      market: string
       sharesHeld: number
     }>
   }
@@ -152,6 +164,7 @@ export default function TransactionsClient() {
         id: s.id,
         stockName: s.stockName,
         code: s.code,
+        market: s.market,
         sharesHeld: Number(s.sharesHeld ?? 0),
       })),
     [stocksData]
@@ -198,10 +211,12 @@ export default function TransactionsClient() {
             new Date(a.transactionDate).getTime() -
             new Date(b.transactionDate).getTime()
           )
+        // 金額順は円換算値で比べる。建値通貨のままだとドル建ての取引が
+        // 円建てより一律小さい額として並んでしまう（ADR 0005）
         case 'amount-desc':
-          return b.totalAmount - a.totalAmount
+          return b.totalAmountJpy - a.totalAmountJpy
         case 'amount-asc':
-          return a.totalAmount - b.totalAmount
+          return a.totalAmountJpy - b.totalAmountJpy
         case 'stock-name':
           return a.stockName.localeCompare(b.stockName)
         default:
@@ -370,16 +385,23 @@ export default function TransactionsClient() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                  {/* 金額は建値通貨で見せ、ドル建てのときだけ円換算額を併記する。
+                      米国株の取引をドル建てのまま ¥ で描かないため（ADR 0005） */}
                   <div className="text-right">
                     <div className="font-medium">
-                      {formatCurrency(t.totalAmount)}
+                      {formatMoney(t.totalAmount, currencyOfMarket(t.market))}
                     </div>
+                    {isUsStock(t.market) && (
+                      <div className="text-xs text-muted-foreground">
+                        ≈ {formatCurrency(t.totalAmountJpy)}
+                      </div>
+                    )}
                     <div className="text-sm text-muted-foreground">
-                      {t.shares}株 × {formatCurrency(t.pricePerShare)}
+                      {t.shares}株 × {formatPrice(t.pricePerShare, t.market)}
                     </div>
                     {t.fee > 0 && (
                       <div className="text-xs text-muted-foreground">
-                        手数料: {formatCurrency(t.fee)}
+                        手数料: {formatMoney(t.fee, currencyOfMarket(t.market))}
                       </div>
                     )}
                   </div>

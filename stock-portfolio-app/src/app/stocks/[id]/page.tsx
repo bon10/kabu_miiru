@@ -316,6 +316,7 @@ export default function StockDetailPage() {
             id: stock.id,
             stockName: stock.stockName,
             code: stock.code,
+            market: stock.market,
             sharesHeld: stock.sharesHeld,
           },
         ]}

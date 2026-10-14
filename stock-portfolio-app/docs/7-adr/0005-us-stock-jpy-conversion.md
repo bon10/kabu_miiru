@@ -32,9 +32,22 @@ Accepted (2026-07-04)
 
 - **為替損益は損益に含まれない。** 取得原価も評価額も同一の当日レートで換算するため、損益は株価変動のみを反映する（円建ての為替差損益は出ない）
 - **将来の拡張**：購入時（または取得時レート）を記録できるようになれば、取得原価だけ購入時レートで換算する「証券会社準拠」方式に移行できる。BUY 時に取得時レートを保存する運用を前提とする
-- **適用範囲**：円換算は summary / holdings・by-broker / portfolio(composition・performance・timeline) / stocks(一覧・詳細) の各 API で行う。`Stock` のドル建て値は Read Model（ADR 0003）と同様、表示直前に円へ射影する
-- **未対応**：取引履歴ビュー（`transactions-client` / `/api/transactions*`）は本 ADR のスコープ外。米国株の取引レコードがある場合、取引金額はドル値が ¥ 表示のまま残る
+- **適用範囲**：円換算は summary / holdings・by-broker / portfolio(composition・performance・timeline) / stocks(一覧・詳細) / transactions(一覧・summary) の各 API で行う。`Stock` のドル建て値は Read Model（ADR 0003）と同様、表示直前に円へ射影する
+- ~~**未対応**：取引履歴ビュー（`transactions-client` / `/api/transactions*`）は本 ADR のスコープ外。米国株の取引レコードがある場合、取引金額はドル値が ¥ 表示のまま残る~~
+  → **2026-10-09 に対応済み**（下記「取引履歴への適用」）
 - **価格更新**：`/api/prices/update`・バッチはドル建てのまま保存する（変更なし）。円換算は読み取り側で行う
+
+### 取引履歴への適用（2026-10-09）
+
+Consequences で「未対応」としていた取引履歴ビューに、本 ADR の原則をそのまま適用した。決定自体は変えていない（当日レート・読み取り時換算・DB はドル建てのまま）。
+
+`Transaction` は受取通貨の列を持たないため、建値通貨は**銘柄の市場（`Stock.market`）**で判定する。配当が受取通貨をレコード単位で持つ（ADR 0006）のと異なる点。
+
+- **取引金額・手数料**は建値通貨で保存されている値として扱い、`/api/transactions` は建値通貨のままの値（`totalAmount` / `fee`）と円換算値（`totalAmountJpy` / `feeJpy`）の両方を返す
+- **一覧の 1 行**は建値通貨を主表示にし、ドル建てのときだけ円換算額を `≈ ¥…` で併記する（受取配当一覧と同じ見せ方）。単価は従来どおり建値通貨（`formatPrice`）
+- **合計（購入総額・売却総額・手数料合計・今月/今年の合計金額）**は円換算してから合算する。従来はドル値と円値を換算せず足していたため、金額そのものが誤っていた
+- **金額順のソート**も円換算値で比較する（建値通貨のままだとドル建ての取引が一律小さく並ぶ）
+- **今年の配当（受取）**は受取通貨で円換算し、あわせて手取り基準（ADR 0015）に揃えた。従来は税引前（`dividendAmount`）を集計していたため、配当画面の年間受取額と一致していなかった
 
 ## 補足：過去日の換算（ADR 0009 による拡張）
 
@@ -56,5 +69,6 @@ Accepted (2026-07-04)
 - [ADR 0003 保有株数・投資額は Transaction を Source of Truth](0003-transaction-as-source-of-truth.md)（本 ADR の「読み取り時に射影する」考え方の土台）
 - [ADR 0006 受取配当は受取通貨をレコード単位で持つ](0006-dividend-receipt-currency.md)（本 ADR の換算原則を受取配当へ拡張。通貨を market ではなくレコードの currency で判定する）
 - [ADR 0009 ポートフォリオ推移は日次終値から再構成](0009-portfolio-timeline-from-daily-close.md)（本 ADR の換算原則を過去日へ拡張。「同一レートで換算する」は保ったまま、レートを各日のものにする）
+- [ADR 0015 受取配当は配当明細を写して保存し集計は手取り基準](0015-dividend-statement-fields-and-net-basis.md)（取引履歴画面の配当集計を手取り基準へ揃えた根拠）
 - [外部 API 連携仕様](../external-apis.md#usdjpy-為替レート)
 - [ユビキタス言語：為替・通貨関連](../2-domain/ubiquitous-language.md#為替通貨関連)
