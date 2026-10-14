@@ -8,6 +8,7 @@
 export type HoldingSortKey =
   | 'stockName'
   | 'market'
+  | 'brokerName'
   | 'sharesHeld'
   | 'investmentAmount'
   | 'currentValue'
@@ -25,6 +26,9 @@ export interface HoldingSort {
 export interface SortableHolding {
   stockName: string
   market: string
+  // 証券会社名はフラット表示の行だけが持つ。証券会社別表示は証券会社ごとに
+  // テーブルが分かれており、グループ内は同一の証券会社なので列を持たない。
+  brokerName?: string
   sharesHeld: number
   investmentAmount: number
   currentValue: number
@@ -33,7 +37,7 @@ export interface SortableHolding {
 }
 
 // 文字列として比較する列。これ以外は数値として比較する。
-const TEXT_SORT_KEYS = ['stockName', 'market'] as const
+const TEXT_SORT_KEYS = ['stockName', 'market', 'brokerName'] as const
 type TextSortKey = (typeof TEXT_SORT_KEYS)[number]
 
 function isTextSortKey(key: HoldingSortKey): key is TextSortKey {
@@ -55,12 +59,14 @@ export function compareHoldings(
 ): number {
   const sign = sort.direction === 'asc' ? 1 : -1
 
+  // brokerName を持たない行（証券会社別表示）は空文字として比較する。
+  // 行どうしで差が付かず、下の銘柄名での比較に落ちる。
   const diff = isTextSortKey(sort.key)
-    ? NAME_COLLATOR.compare(a[sort.key], b[sort.key])
+    ? NAME_COLLATOR.compare(a[sort.key] ?? '', b[sort.key] ?? '')
     : a[sort.key] - b[sort.key]
   if (diff !== 0) return diff * sign
 
-  // 市場や金額が同じ行は銘柄名の昇順で決める。
+  // 市場・証券会社・金額が同じ行は銘柄名の昇順で決める。
   // 銘柄名そのもので並べている場合は差が無い＝同名なので 0 になる。
   return NAME_COLLATOR.compare(a.stockName, b.stockName)
 }

@@ -118,6 +118,32 @@ describe('sortHoldings', () => {
     ])
   })
 
+  it('証券会社でまとめて並べ、同じ証券会社の中は銘柄名の昇順になる', () => {
+    const rows = [
+      holding('任天堂', { brokerName: '楽天' }),
+      holding('テスラ', { brokerName: 'SBI' }),
+      holding('ソニー', { brokerName: '楽天' }),
+    ]
+
+    const sorted = sortHoldings(rows, asc('brokerName'))
+
+    expect(sorted.map((r) => `${r.brokerName}/${r.stockName}`)).toEqual([
+      'SBI/テスラ',
+      '楽天/ソニー',
+      '楽天/任天堂',
+    ])
+  })
+
+  it('証券会社を持たない行（証券会社別表示）では銘柄名の昇順になる', () => {
+    // 証券会社別表示の行は brokerName を持たない。グループ内は同一の証券会社なので
+    // 並べ替えても意味がなく、銘柄名で決まるのが正しい。
+    const rows = [holding('任天堂'), holding('あいさつ')]
+
+    expect(
+      sortHoldings(rows, asc('brokerName')).map((r) => r.stockName)
+    ).toEqual(['あいさつ', '任天堂'])
+  })
+
   it('値が同じときは銘柄名の昇順で決める（並びが入力順に左右されない）', () => {
     const rows = [
       holding('さくら', { profitLoss: 100 }),
@@ -170,10 +196,13 @@ describe('nextHoldingSort', () => {
     )
   })
 
-  it('銘柄名・市場の列を押したら昇順から始める', () => {
+  it('銘柄名・市場・証券会社の列を押したら昇順から始める', () => {
     expect(nextHoldingSort(desc('profitLoss'), 'stockName')).toEqual(
       asc('stockName')
     )
     expect(nextHoldingSort(desc('profitLoss'), 'market')).toEqual(asc('market'))
+    expect(nextHoldingSort(desc('profitLoss'), 'brokerName')).toEqual(
+      asc('brokerName')
+    )
   })
 })

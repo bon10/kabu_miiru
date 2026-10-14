@@ -183,7 +183,11 @@ function SortableHead({
   children: React.ReactNode
 }) {
   const active = sort.key === sortKey
-  const Icon = !active ? ChevronsUpDown : sort.direction === 'asc' ? ArrowUp : ArrowDown
+  const Icon = !active
+    ? ChevronsUpDown
+    : sort.direction === 'asc'
+      ? ArrowUp
+      : ArrowDown
 
   return (
     <TableHead
@@ -402,7 +406,14 @@ export default function HoldingsClient() {
                   >
                     銘柄
                   </SortableHead>
-                  <TableHead>証券会社</TableHead>
+                  <SortableHead
+                    sortKey="brokerName"
+                    sort={effectiveSort}
+                    onSort={handleSort}
+                    align="left"
+                  >
+                    証券会社
+                  </SortableHead>
                   <SortableHead
                     sortKey="market"
                     sort={effectiveSort}
