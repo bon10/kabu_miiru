@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { toDateKey } from '@/lib/date-key'
+import { isUsStock, toJpy } from '@/lib/currency'
+import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import {
   assertNoOrphanedSells,
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest) {
             select: {
               stockName: true,
               code: true,
+              market: true,
             },
           },
         },
@@ -62,18 +65,32 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.ceil(totalCount / limit)
 
+    // 米国株の取引があるときだけ当日レートを取得して円換算する（ADR 0005）。
+    // 国内株だけなら換算不要なので、外部リクエストを避けてレート取得をスキップする。
+    const hasUsStock = transactions.some((t) => isUsStock(t.stock.market))
+    const usdJpyRate = hasUsStock ? await getCurrentUsdJpyRate() : 1
+
     return Response.json(
       createSuccessResponse({
+        // 取引金額・手数料は銘柄の建値通貨で保存されている（米国株はドル建て）。
+        // 建値通貨のままの値と円換算した値を併せて返し、表示側で使い分けさせる（ADR 0005）。
         transactions: transactions.map((t) => ({
           id: t.id,
           stockId: t.stockId,
           stockName: t.stock.stockName,
           stockCode: t.stock.code,
+          market: t.stock.market,
           transactionType: t.transactionType,
           shares: Number(t.shares),
           pricePerShare: Number(t.pricePerShare),
           totalAmount: Number(t.totalAmount),
+          totalAmountJpy: toJpy(
+            Number(t.totalAmount),
+            t.stock.market,
+            usdJpyRate,
+          ),
           fee: Number(t.fee),
+          feeJpy: toJpy(Number(t.fee), t.stock.market, usdJpyRate),
           transactionDate: t.transactionDate.toISOString(),
           memo: t.memo,
         })),

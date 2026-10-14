@@ -19,7 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { SearchableSelect } from '@/components/ui/searchable-select'
+import {
+  StockSelect,
+  type StockSelectOption,
+} from '@/components/stocks/stock-select'
 import { formatMoney } from '@/lib/utils'
 import {
   calcDividendReceipt,
@@ -28,10 +31,7 @@ import {
   DIVIDEND_TAX_MESSAGES,
 } from '@/lib/dividend'
 
-export interface DividendStockOption {
-  id: number
-  stockName: string
-  code: string
+export interface DividendStockOption extends StockSelectOption {
   // 受取通貨の初期値を決めるためだけに持つ（米国株はドル受取が既定）。
   // 保有株数は持たない：配当合計に掛けるのは明細の数量で、現在の保有株数は使わない（ADR 0015）。
   market: string
@@ -212,16 +212,10 @@ export function DividendFormDialog({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">銘柄</label>
-              <SearchableSelect
+              <StockSelect
+                stocks={stocks}
                 value={stockId}
                 onValueChange={handleStockChange}
-                placeholder="銘柄を選択"
-                searchPlaceholder="銘柄名・コードで検索..."
-                options={stocks.map((s) => ({
-                  value: String(s.id),
-                  label: `${s.stockName}（${s.code}）`,
-                  keywords: s.code,
-                }))}
               />
             </div>
 
