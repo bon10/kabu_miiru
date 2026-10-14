@@ -34,16 +34,26 @@ security:
 tags:
   - name: stocks
     description: 銘柄一覧管理
+  - name: holdings
+    description: 保有一覧（証券会社別）
   - name: portfolio
     description: ポートフォリオ分析
   - name: transactions
     description: 取引履歴管理
+  - name: dividends
+    description: 受取配当管理
   - name: prices
     description: 現在値取得・価格履歴
   - name: summary
     description: 合計情報・サマリー
+  - name: brokers
+    description: 証券会社マスタ
+  - name: settings
+    description: アプリ設定
   - name: import
     description: データインポート
+  - name: batch
+    description: バッチ（X-API-Key / Vercel Cron から実行）
 
 paths:
   # 銘柄一覧管理
@@ -283,6 +293,74 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /portfolio/timeline:
+    get:
+      tags: [portfolio]
+      summary: 資産推移
+      description: >-
+        日次の評価額・投資元本・評価損益・累計実現損益・累計配当を返す（ADR 0009）。
+        保存値ではなく、取引履歴・日次終値・日次 USD/JPY レートから読み取り時に再構成した
+        派生値。各日の円換算はその日のレートで行う（当日レートは使わない）。
+        起点日（ADR 0008）より前は保有が不明なため返さない。
+      parameters:
+        - name: range
+          in: query
+          description: 表示期間。lastMonth だけ終点が今日ではなく前月末になる
+          schema:
+            type: string
+            enum: [thisMonth, lastMonth, 1y, 3y, 5y, all]
+            default: 1y
+      responses:
+        '200':
+          description: 資産推移取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TimelineResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 保有一覧（証券会社別）
+  /holdings/by-broker:
+    get:
+      tags: [holdings]
+      summary: 証券会社別保有一覧
+      description: >-
+        証券会社ごとにグループ化した保有一覧と、その合計を返す。
+        金額（投資額・評価額・評価損益・年初来配当）は円換算済み、
+        単価（平均取得単価・現在価格）は建値通貨のまま（ADR 0005）。
+      parameters:
+        - name: includeZero
+          in: query
+          description: 保有株数0の銘柄も含める
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 保有一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      brokers:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BrokerHoldings'
+                      grandTotal:
+                        $ref: '#/components/schemas/HoldingsGrandTotal'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   # 取引履歴管理
   /transactions:
     get:
@@ -300,7 +378,7 @@ paths:
           description: 取引種別フィルター
           schema:
             type: string
-            enum: [BUY, SELL, DIVIDEND]
+            enum: [BUY, SELL]
         - name: startDate
           in: query
           description: 開始日
@@ -339,7 +417,7 @@ paths:
                       transactions:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Transaction'
+                          $ref: '#/components/schemas/TransactionListItem'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '400':
@@ -372,11 +450,125 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /transactions/{id}:
+    get:
+      tags: [transactions]
+      summary: 取引詳細取得
+      description: 指定した取引 1 件を取得
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 取引取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [transactions]
+      summary: 取引更新
+      description: >-
+        取引の内容を更新する。銘柄の付け替えは不可（stockId は既存値のまま扱う）。
+        更新後に保有株数・投資額を再計算し、先行する BUY の無い SELL が生じる場合は
+        INVALID_TRANSACTION_ORDER で拒否する。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionInput'
+      responses:
+        '200':
+          description: 取引更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          description: 入力不正、または取引順序が成立しない（INVALID_TRANSACTION_ORDER）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '403':
+          description: 取引履歴の編集・削除が設定で許可されていない（FORBIDDEN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [transactions]
+      summary: 取引削除
+      description: 取引を削除し、保有株数・投資額を再計算する
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+        '400':
+          description: 削除すると取引順序が成立しない（INVALID_TRANSACTION_ORDER）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '403':
+          description: 取引履歴の編集・削除が設定で許可されていない（FORBIDDEN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /transactions/summary:
     get:
       tags: [transactions]
       summary: 期間別取引サマリー
-      description: 指定期間の取引サマリーを取得
+      description: >-
+        指定期間の取引サマリーを取得。金額はすべて円換算後の値（ドル建ての取引は
+        当日レートで換算してから合算する。ADR 0005）。
       parameters:
         - name: period
           in: query
@@ -408,45 +600,239 @@ paths:
                   data:
                     type: object
                     properties:
-                      totalBuy:
+                      totalTransactions:
+                        type: integer
+                        description: 指定期間の取引件数
+                      totalBuyAmount:
                         type: number
                         format: decimal
-                      totalSell:
+                      totalSellAmount:
                         type: number
                         format: decimal
                       totalDividend:
                         type: number
                         format: decimal
-                      netProfit:
+                        description: >-
+                          当年（カレンダー年、ADR 0004）の受取配当。手取り基準で、
+                          受取金額を持たない旧レコードは税引前で代用する（ADR 0015）
+                      totalFees:
                         type: number
                         format: decimal
-                      transactionCount:
-                        type: integer
                       periodStats:
                         type: object
+                        description: 当月・当年の集計（期間指定とは独立に JST の暦で区切る）
                         properties:
-                          currentMonth:
-                            type: object
-                            properties:
-                              buy:
-                                type: number
-                              sell:
-                                type: number
-                              dividend:
-                                type: number
-                              count:
-                                type: integer
-                          currentYear:
-                            type: object
-                            properties:
-                              buy:
-                                type: number
-                              sell:
-                                type: number
-                              dividend:
-                                type: number
-                              count:
-                                type: integer
+                          thisMonth:
+                            $ref: '#/components/schemas/TransactionPeriodStats'
+                          thisYear:
+                            $ref: '#/components/schemas/TransactionPeriodStats'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 受取配当管理
+  /dividends:
+    get:
+      tags: [dividends]
+      summary: 受取配当一覧取得
+      description: >-
+        受取配当の一覧を取得。金額は受取通貨建ての値と、当日レートで円換算した値
+        （dividendAmountJpy / netAmountJpy）の両方を返す（ADR 0006）。
+      parameters:
+        - name: stockId
+          in: query
+          description: 銘柄IDフィルター
+          schema:
+            type: integer
+        - name: year
+          in: query
+          description: 支払日の年フィルター（カレンダー年、ADR 0004）
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          description: 開始日
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 終了日
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: 受取配当取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      dividends:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DividendListItem'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [dividends]
+      summary: 受取配当追加
+      description: >-
+        証券会社の配当明細 1 行を写して登録する（ADR 0015）。
+        配当・分配金合計は「1 株あたり配当金 × 数量」で確定する。数量は明細の数量を
+        必須入力とし、現在の保有株数は参照しない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DividendInput'
+      responses:
+        '201':
+          description: 受取配当追加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DividendWithStock'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /dividends/{id}:
+    get:
+      tags: [dividends]
+      summary: 受取配当詳細取得
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 受取配当取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DividendWithStock'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [dividends]
+      summary: 受取配当削除
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /dividends/summary:
+    get:
+      tags: [dividends]
+      summary: 受取配当サマリー
+      description: >-
+        カレンダー年（ADR 0004）の受取配当サマリー。合計は手取り基準で、受取金額を
+        持たない旧レコードは税引前で代用する（ADR 0015）。金額は円換算済み。
+      parameters:
+        - name: year
+          in: query
+          description: 対象年（既定は当年）
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: サマリー取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      year:
+                        type: integer
+                      yearTotal:
+                        type: number
+                        format: decimal
+                        description: 手取り基準の年間受取額
+                      yearGrossTotal:
+                        type: number
+                        format: decimal
+                        description: 税引前の年間合計
+                      yearTaxTotal:
+                        type: number
+                        format: decimal
+                        description: 年間税額（税引前 − 手取り）
+                      firstHalfTotal:
+                        type: number
+                        format: decimal
+                      secondHalfTotal:
+                        type: number
+                        format: decimal
+                      prevYearTotal:
+                        type: number
+                        format: decimal
+                      yearOverYearDiff:
+                        type: number
+                        format: decimal
+                      count:
+                        type: integer
+                      byStock:
+                        type: array
+                        description: 銘柄別の内訳（手取り合計の降順）
+                        items:
+                          $ref: '#/components/schemas/DividendByStock'
         '400':
           $ref: '#/components/responses/BadRequest'
         '500':
@@ -572,14 +958,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /summary/by-company:
+  # 証券会社マスタ
+  /brokers:
     get:
-      tags: [summary]
-      summary: 証券会社別サマリー
-      description: 証券会社別のサマリー情報を取得
+      tags: [brokers]
+      summary: 証券会社一覧取得
+      description: 証券会社マスタを名前順で取得
       responses:
         '200':
-          description: 証券会社別サマリー取得成功
+          description: 取得成功
           content:
             application/json:
               schema:
@@ -588,20 +975,154 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        companyName:
-                          type: string
-                        stockCount:
-                          type: integer
-                        totalInvestment:
-                          type: number
-                        totalProfitLoss:
-                          type: number
-                        totalDividend:
-                          type: number
-                        profitLossRate:
-                          type: number
+                      $ref: '#/components/schemas/Broker'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [brokers]
+      summary: 証券会社追加
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: 追加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Broker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /brokers/{id}:
+    put:
+      tags: [brokers]
+      summary: 証券会社名の更新
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Broker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [brokers]
+      summary: 証券会社削除
+      description: >-
+        その証券会社を使っている銘柄が 1 件でもあれば削除できない（IN_USE）。
+        削除成功時は本文を返さない（204）。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 削除成功（本文なし）
+        '400':
+          description: 使用中のため削除できない（IN_USE）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # アプリ設定
+  /settings:
+    get:
+      tags: [settings]
+      summary: アプリ設定取得
+      description: 真偽値フラグをまとめて返す
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      allowTransactionEdit:
+                        type: boolean
+                        description: 取引履歴の編集・削除を許可するか（既定 false）
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [settings]
+      summary: アプリ設定更新
+      description: 許可リスト外のキーは拒否する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, value]
+              properties:
+                key:
+                  type: string
+                  enum: [allowTransactionEdit]
+                value:
+                  type: boolean
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -667,7 +1188,7 @@ paths:
   # バッチ処理（現在値取得）
   /batch/price-update:
     post:
-      tags: [prices]
+      tags: [batch]
       summary: 価格自動更新バッチ
       description: 保有株式の現在値を自動更新（前場11:30、後場15:00実行）
       security:
@@ -730,7 +1251,7 @@ paths:
   # バッチ処理（日次終値・日次USD/JPYレートの取り込み）
   /batch/daily-close:
     get:
-      tags: [prices]
+      tags: [batch]
       summary: 日次終値の取り込み（定期実行）
       description: |
         Vercel Cron からの定期実行用（ADR 0013）。1 日 1 回、JST 08:00〜08:59 に呼ばれる。
@@ -761,7 +1282,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
-      tags: [prices]
+      tags: [batch]
       summary: 日次終値の取り込み（手動実行）
       description: |
         初回バックフィル（`range=2y` など）や cron 失敗後の取り戻しに使う（ADR 0009）。
@@ -788,6 +1309,71 @@ paths:
                 $ref: '#/components/schemas/DailyCloseBatchResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # バッチ処理（初期残高 Transaction の生成）
+  /batch/initial-balance:
+    post:
+      tags: [batch]
+      summary: 初期残高 Transaction の生成
+      description: >-
+        TSV インポート由来の保有に「起点日にこの株数を保有していた」取引を 1 件ずつ作る
+        （ADR 0008）。一度きりの移行作業だが、何度実行しても結果が変わらないため再実行しても
+        安全。既定は dry-run で DB を変更せず、{"apply": true} を渡したときだけ書き込む。
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply:
+                  type: boolean
+                  default: false
+                  description: true のときだけ実際に書き込む
+      responses:
+        '200':
+          description: 実行成功（dry-run を含む）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      applied:
+                        type: boolean
+                        description: 実際に書き込んだか（false は dry-run）
+                      createdCount:
+                        type: integer
+                      created:
+                        type: array
+                        description: 作成した（または作成予定の）初期残高
+                        items:
+                          type: object
+                      skipped:
+                        type: array
+                        description: 対象外とした銘柄と理由
+                        items:
+                          type: object
+                      mismatches:
+                        type: array
+                        description: 移行後に集計値が移行前と一致しなかった銘柄（空が成功条件）
+                        items:
+                          type: object
+                      unbackedSells:
+                        type: array
+                        description: 取得原価が失われていて自動復元できない銘柄（手動対応が必要）
+                        items:
+                          type: object
+                      message:
+                        type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1050,6 +1636,8 @@ components:
               items:
                 $ref: '#/components/schemas/PriceHistory'
 
+    # 単体取得（GET /transactions/{id}）・追加（POST）・更新（PUT）が返す形。
+    # 金額は銘柄の建値通貨建て（米国株はドル建て、ADR 0005）。
     Transaction:
       type: object
       properties:
@@ -1059,31 +1647,65 @@ components:
           type: integer
         stockName:
           type: string
+        stockCode:
+          type: string
         transactionType:
           type: string
-          enum: [BUY, SELL, DIVIDEND]
+          enum: [BUY, SELL]
         shares:
           type: number
           format: decimal
         pricePerShare:
           type: number
           format: decimal
+          description: 建値通貨建ての単価（円換算しない）
         totalAmount:
           type: number
           format: decimal
+          description: 建値通貨建ての取引金額
         fee:
           type: number
           format: decimal
           default: 0
+          description: 建値通貨建ての手数料
         transactionDate:
           type: string
-          format: date
+          format: date-time
+          description: 取引日。暦日なので時刻は 00:00:00Z で返る（ADR 0012）
         memo:
           type: string
           nullable: true
-        createdAt:
-          type: string
-          format: date-time
+
+    # 一覧（GET /transactions）が返す形。建値通貨の値に加えて円換算値を持つ。
+    TransactionListItem:
+      allOf:
+        - $ref: '#/components/schemas/Transaction'
+        - type: object
+          properties:
+            market:
+              type: string
+              description: 銘柄の市場。建値通貨を決める（ADR 0005）
+              enum: [国内, 米国]
+            totalAmountJpy:
+              type: number
+              format: decimal
+              description: 取引金額を当日レートで円換算した値
+            feeJpy:
+              type: number
+              format: decimal
+              description: 手数料を当日レートで円換算した値
+
+    TransactionPeriodStats:
+      type: object
+      properties:
+        buyCount:
+          type: integer
+        sellCount:
+          type: integer
+        totalAmount:
+          type: number
+          format: decimal
+          description: 円換算後の合計金額（購入・売却の区別なく合算する）
 
     TransactionInput:
       type: object
@@ -1096,18 +1718,21 @@ components:
       properties:
         stockId:
           type: integer
+          description: PUT では無視され、既存の銘柄のまま更新される（銘柄の付け替えは不可）
         transactionType:
           type: string
-          enum: [BUY, SELL, DIVIDEND]
+          enum: [BUY, SELL]
         shares:
           type: number
           format: decimal
         pricePerShare:
           type: number
           format: decimal
+          description: 建値通貨建てで渡す（米国株はドル）
         totalAmount:
           type: number
           format: decimal
+          description: 省略時は shares × pricePerShare で確定する
         fee:
           type: number
           format: decimal
@@ -1119,6 +1744,8 @@ components:
           type: string
           nullable: true
 
+    # 受取配当 1 件（DB のレコードそのまま）。金額はすべて受取通貨建て（ADR 0006）。
+    # 銘柄詳細（StockDetail.dividendHistory）が返すのはこの形。
     DividendHistory:
       type: object
       properties:
@@ -1130,12 +1757,32 @@ components:
           type: number
           format: decimal
           description: >-
-            受取総額（受取通貨建て）。POST 時は 1 株あたり配当金
-            (dividendPerShare) を受け取り、サーバー側で現在の保有株数
-            (Stock.sharesHeld) を掛けて確定・保存する（BR-202）。
+            配当・分配金合計（税引前）。POST 時は 1 株あたり配当金 (dividendPerShare)
+            と明細の数量 (shares) を受け取り、その積で確定・保存する（BR-202 / ADR 0015）。
+            現在の保有株数 (Stock.sharesHeld) は使わない。
+        shares:
+          type: number
+          format: decimal
+          nullable: true
+          description: 明細の数量（配当計算の対象株数）。ADR 0015 以前の旧レコードは null
+        taxAmount:
+          type: number
+          format: decimal
+          nullable: true
+          description: 税額合計。null は税額不明（旧レコード、または両方未入力）
+        netAmount:
+          type: number
+          format: decimal
+          nullable: true
+          description: 受取金額（手取り）。集計の基準。null のときだけ税引前で代用する
+        currency:
+          type: string
+          enum: [JPY, USD]
+          description: 受取通貨。銘柄の市場とは独立に持つ（ADR 0006）
         paymentDate:
           type: string
-          format: date
+          format: date-time
+          description: 支払日。暦日なので時刻は 00:00:00Z で返る（ADR 0012）
         dividendType:
           type: string
           nullable: true
@@ -1144,6 +1791,271 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    # 受取配当エンドポイント（単体取得・追加）が返す形。銘柄名を添え、createdAt は返さない。
+    DividendWithStock:
+      allOf:
+        - $ref: '#/components/schemas/DividendHistory'
+        - type: object
+          properties:
+            stockName:
+              type: string
+            stockCode:
+              type: string
+            holdingCompany:
+              type: string
+
+    # 一覧（GET /dividends）が返す形。受取通貨の値に加えて円換算値を持つ。
+    DividendListItem:
+      allOf:
+        - $ref: '#/components/schemas/DividendWithStock'
+        - type: object
+          properties:
+            dividendAmountJpy:
+              type: number
+              format: decimal
+              description: 税引前の配当合計を当日レートで円換算した値
+            netAmountJpy:
+              type: number
+              format: decimal
+              description: 手取りを当日レートで円換算した値（netAmount が null なら税引前で代用）
+
+    DividendInput:
+      type: object
+      required:
+        - stockId
+        - dividendPerShare
+        - shares
+        - paymentDate
+      properties:
+        stockId:
+          type: integer
+        dividendPerShare:
+          type: number
+          format: decimal
+          description: 明細の「単価」（1 株あたり配当金）。受取通貨建て
+        shares:
+          type: number
+          format: decimal
+          description: 明細の「数量」。0 より大きい値が必須（保有株数で補完しない）
+        taxAmount:
+          type: number
+          format: decimal
+          nullable: true
+          description: >-
+            明細の「税額合計」。空欄可。片方だけ入れるともう片方は
+            「配当合計 − 入力値」で埋まる。両方入れた場合はそのまま採り、
+            合計との一致は検証しない（米国株は一致しないため。ADR 0015）
+        netAmount:
+          type: number
+          format: decimal
+          nullable: true
+          description: 明細の「受取金額」。空欄可
+        currency:
+          type: string
+          enum: [JPY, USD]
+          default: JPY
+        paymentDate:
+          type: string
+          format: date
+        dividendType:
+          type: string
+          nullable: true
+          enum: [期末, 中間, 四半期, 特別, 分配金]
+
+    DividendByStock:
+      type: object
+      properties:
+        stockId:
+          type: integer
+        stockName:
+          type: string
+        stockCode:
+          type: string
+        holdingCompany:
+          type: string
+        total:
+          type: number
+          format: decimal
+          description: 手取り基準・円換算後の年間合計
+        firstHalf:
+          type: number
+          format: decimal
+        secondHalf:
+          type: number
+          format: decimal
+        count:
+          type: integer
+
+    Broker:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # 証券会社別保有一覧の 1 グループ。
+    BrokerHoldings:
+      type: object
+      properties:
+        brokerName:
+          type: string
+        stockCount:
+          type: integer
+        totalInvestment:
+          type: number
+          format: decimal
+        totalCurrentValue:
+          type: number
+          format: decimal
+        totalProfitLoss:
+          type: number
+          format: decimal
+        totalProfitLossRate:
+          type: number
+          format: decimal
+          description: パーセント値（例 12.3 は +12.3%）
+        totalYtdDividend:
+          type: number
+          format: decimal
+          description: >-
+            年初来の受取配当合計。**現状は税引前・通貨換算なしで合算している**
+            （手取り基準＝ADR 0015、受取通貨での円換算＝ADR 0006 への追従が未対応）
+        holdings:
+          type: array
+          items:
+            $ref: '#/components/schemas/HoldingRow'
+
+    HoldingRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        stockName:
+          type: string
+        code:
+          type: string
+        market:
+          type: string
+          enum: [国内, 米国]
+        sharesHeld:
+          type: number
+          format: decimal
+        avgAcquisitionPrice:
+          type: number
+          format: decimal
+          description: 建値通貨建て（円換算しない）
+        investmentAmount:
+          type: number
+          format: decimal
+          description: 円換算済み
+        currentPrice:
+          type: number
+          format: decimal
+          description: 建値通貨建て（円換算しない）
+        currentValue:
+          type: number
+          format: decimal
+          description: 円換算済み
+        profitLoss:
+          type: number
+          format: decimal
+          description: 円換算済み
+        profitLossRate:
+          type: number
+          format: decimal
+        ytdDividend:
+          type: number
+          format: decimal
+          description: BrokerHoldings.totalYtdDividend と同じ注意点を持つ
+        priceUpdateStatus:
+          type: string
+          enum: [SUCCESS, ERROR, PENDING]
+        priceUpdateError:
+          type: string
+          nullable: true
+
+    HoldingsGrandTotal:
+      type: object
+      properties:
+        totalInvestment:
+          type: number
+          format: decimal
+        totalCurrentValue:
+          type: number
+          format: decimal
+        totalProfitLoss:
+          type: number
+          format: decimal
+        totalProfitLossRate:
+          type: number
+          format: decimal
+        totalYtdDividend:
+          type: number
+          format: decimal
+        totalStocks:
+          type: integer
+        brokerCount:
+          type: integer
+
+    # 資産推移の 1 日分。すべて円換算済みで、その日のレートで換算する（ADR 0009）。
+    TimelinePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        marketValue:
+          type: number
+          format: decimal
+          description: その日の保有株を日次終値で評価した合計
+        investedPrincipal:
+          type: number
+          format: decimal
+          description: その日に投じている取得原価の合計
+        unrealizedPL:
+          type: number
+          format: decimal
+          description: marketValue − investedPrincipal
+        cumulativeRealizedPL:
+          type: number
+          format: decimal
+        cumulativeDividends:
+          type: number
+          format: decimal
+        filledStockCount:
+          type: integer
+          description: 終値が実測値でない銘柄数（前営業日で補完した、または終値が無い）
+
+    TimelineResult:
+      type: object
+      properties:
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelinePoint'
+        baselineDate:
+          type: string
+          format: date
+          nullable: true
+          description: 起点日。これより前は保有が不明なため返さない（ADR 0008）
+        missingPriceStocks:
+          type: array
+          description: 日次終値が 1 件も無く評価額に算入できなかった銘柄
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              stockName:
+                type: string
 
     PriceHistory:
       type: object

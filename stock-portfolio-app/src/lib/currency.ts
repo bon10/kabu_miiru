@@ -20,6 +20,12 @@ export function toJpy(amount: number, market: string, usdJpyRate: number): numbe
 // 受取通貨コード。配当は銘柄の市場と独立に受取通貨を持つ（米国株の円受取があるため）。
 export type Currency = 'JPY' | 'USD'
 
+// 銘柄の市場に対応する建値通貨。取引金額・手数料のように、受取通貨を
+// レコード自身が持たない値を建値通貨で表示するときに使う。
+export function currencyOfMarket(market: string): Currency {
+  return isUsStock(market) ? 'USD' : 'JPY'
+}
+
 // 通貨コードで金額を円換算する。USD のみ当日レートを掛け、JPY はそのまま返す。
 // market ではなく通貨コードで判定する点が toJpy との違い（配当の受取通貨に使う）。
 export function toJpyByCurrency(

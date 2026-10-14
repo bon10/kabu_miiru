@@ -19,12 +19,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  StockSelect,
+  type StockSelectOption,
+} from '@/components/stocks/stock-select'
+import { formatMoney } from '@/lib/utils'
+import { currencyOfMarket } from '@/lib/currency'
 
-export interface StockOption {
-  id: number
-  stockName: string
-  code: string
+export interface StockOption extends StockSelectOption {
+  // 売却時の保有超過チェックとラベル表示に使うため、取引フォームでは必須にする
   sharesHeld: number
+  // 銘柄の市場（'国内' / '米国'）。入力した単価・株数から出す取引金額を
+  // どの通貨で見せるかを決める（米国株はドル建て。ADR 0005）
+  market: string
 }
 
 type TransactionType = 'BUY' | 'SELL'
@@ -204,22 +211,12 @@ export function TransactionFormDialog({
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">銘柄</label>
-              <Select
+              <StockSelect
+                stocks={stocks}
                 value={stockId}
                 onValueChange={setStockId}
                 disabled={isEdit}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="銘柄を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stocks.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.stockName}（{s.code}） / 保有 {s.sharesHeld}株
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -277,9 +274,16 @@ export function TransactionFormDialog({
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm flex justify-between">
               <span>取引金額</span>
               <span className="font-medium">
-                {totalAmount.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
+                {/* 単価は建値通貨で入力するため、取引金額も建値通貨で見せる。
+                    銘柄が未選択のうちは通貨を決められないので記号なしで出す */}
+                {selectedStock
+                  ? formatMoney(
+                      totalAmount,
+                      currencyOfMarket(selectedStock.market)
+                    )
+                  : totalAmount.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
               </span>
             </div>
 
