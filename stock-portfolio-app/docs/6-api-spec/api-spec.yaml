@@ -341,6 +341,19 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: market
+          in: query
+          description: 市場で絞り込む。合計（brokers の各合計・grandTotal）も絞り込んだ銘柄だけで計算する
+          schema:
+            type: string
+            enum: [国内, 米国]
+        - name: sector
+          in: query
+          description: >-
+            セクターで絞り込む。`__unset__` でセクター未入力の銘柄。
+            合計も絞り込んだ銘柄だけで計算する
+          schema:
+            type: string
       responses:
         '200':
           description: 保有一覧取得成功
@@ -358,6 +371,22 @@ paths:
                           $ref: '#/components/schemas/BrokerHoldings'
                       grandTotal:
                         $ref: '#/components/schemas/HoldingsGrandTotal'
+                      filterOptions:
+                        type: object
+                        description: 絞り込みの選択肢。market / sector で絞り込む前の銘柄（includeZero は反映）から作る
+                        properties:
+                          markets:
+                            type: array
+                            items:
+                              type: string
+                          sectors:
+                            type: array
+                            description: 未入力のセクターは含めない
+                            items:
+                              type: string
+                          hasUnsetSector:
+                            type: boolean
+                            description: セクター未入力の銘柄があるか
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1945,6 +1974,10 @@ components:
         market:
           type: string
           enum: [国内, 米国]
+        marketSector:
+          type: string
+          nullable: true
+          description: セクター。未入力なら null
         sharesHeld:
           type: number
           format: decimal

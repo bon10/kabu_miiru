@@ -28,6 +28,25 @@ const asc = (key: HoldingSort['key']): HoldingSort => ({
   key,
   direction: 'asc',
 })
+
+describe('セクターでの並べ替え', () => {
+  it('セクター名の昇順に並び、未設定は先頭に来る', () => {
+    const rows = [
+      holding('A', { marketSector: 'Technology' }),
+      holding('B', { marketSector: null }),
+      holding('C', { marketSector: 'Energy' }),
+    ]
+    expect(sortHoldings(rows, asc('marketSector')).map((r) => r.stockName)).toEqual([
+      'B',
+      'C',
+      'A',
+    ])
+  })
+
+  it('初めて押したときは昇順', () => {
+    expect(nextHoldingSort(asc('stockName'), 'marketSector')).toEqual(asc('marketSector'))
+  })
+})
 const desc = (key: HoldingSort['key']): HoldingSort => ({
   key,
   direction: 'desc',

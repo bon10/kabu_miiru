@@ -6,17 +6,25 @@ import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy, toJpyByCurrency } from '@/lib/currency'
 import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
 import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
+import { holdingFilterOptions, matchesHoldingFilter } from '@/lib/holdings-filter'
 
 // 証券会社別の保有銘柄ビュー。
 // 各証券会社のサマリと、その下の銘柄リストを返す。
 // ドメイン用語は docs/2-domain/ubiquitous-language.md を参照。
 //   - デフォルト: 保有株数 > 0 の銘柄のみ（= 現保有）
 //   - includeZero=true: 過去に保有していた銘柄も含める
+//   - market / sector: 市場・セクターで絞り込む（sector=__unset__ でセクター未入力の銘柄）。
+//     合計も絞り込んだ銘柄だけで計算する。filterOptions は絞り込む前の銘柄から作る
 // 金額（投資額・評価額・損益）は円ベース。米国株は当日の USD/JPY レートで
 // 円換算する。単価（平均取得・現在価格）はドル建てのまま返し、表示側で $ 表記する。
 export async function GET(request: NextRequest) {
   try {
-    const includeZero = request.nextUrl.searchParams.get('includeZero') === 'true'
+    const searchParams = request.nextUrl.searchParams
+    const includeZero = searchParams.get('includeZero') === 'true'
+    const filter = {
+      market: searchParams.get('market') ?? undefined,
+      sector: searchParams.get('sector') ?? undefined,
+    }
     // 配当合計はカレンダー年で集計する（ADR 0004）。年の境目は JST で判定する（ADR 0012）
     const yearStart = dateKeyOf(dateKeyParts(toDateKey(new Date())).year, 0, 1)
 
@@ -24,7 +32,7 @@ export async function GET(request: NextRequest) {
       ? {}
       : { sharesHeld: { gt: 0 } }
 
-    const [stocks, dividends, usdJpyRate] = await Promise.all([
+    const [allStocks, dividends, usdJpyRate] = await Promise.all([
       prisma.stock.findMany({
         where: stockWhere,
         orderBy: { stockName: 'asc' },
@@ -40,6 +48,9 @@ export async function GET(request: NextRequest) {
       }),
       getCurrentUsdJpyRate(),
     ])
+
+    const filterOptions = holdingFilterOptions(allStocks)
+    const stocks = allStocks.filter((s) => matchesHoldingFilter(s, filter))
 
     // 年初来配当は手取り（受取金額）基準で積む。受取金額を持たない旧レコードは
     // 税引前で代用する（ADR 0015）。円換算は銘柄の市場ではなくレコードの受取通貨で
@@ -62,6 +73,7 @@ export async function GET(request: NextRequest) {
       stockName: string
       code: string
       market: string
+      marketSector: string | null
       sharesHeld: number
       avgAcquisitionPrice: number
       investmentAmount: number
@@ -102,6 +114,7 @@ export async function GET(request: NextRequest) {
         stockName: s.stockName,
         code: s.code,
         market: s.market,
+        marketSector: s.marketSector || null,
         sharesHeld,
         avgAcquisitionPrice: Number(s.avgAcquisitionPrice),
         investmentAmount,
@@ -163,7 +176,9 @@ export async function GET(request: NextRequest) {
     grand.totalProfitLossRate =
       grand.totalInvestment > 0 ? (grand.totalProfitLoss / grand.totalInvestment) * 100 : 0
 
-    return Response.json(createSuccessResponse({ brokers, grandTotal: grand }))
+    return Response.json(
+      createSuccessResponse({ brokers, grandTotal: grand, filterOptions }),
+    )
   } catch (error) {
     return handleApiError(error)
   }
