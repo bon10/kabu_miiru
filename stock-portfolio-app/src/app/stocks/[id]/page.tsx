@@ -292,7 +292,8 @@ export default function StockDetailPage() {
           <Button
             variant="outline"
             onClick={handlePriceUpdate}
-            disabled={isUpdatingPrice}
+            // 価格更新 API は保有株数 0 の銘柄を対象外にするため、押しても何も起きない
+            disabled={isUpdatingPrice || stock.sharesHeld <= 0}
           >
             <RefreshCw
               className={cn('h-4 w-4 mr-2', isUpdatingPrice && 'animate-spin')}
