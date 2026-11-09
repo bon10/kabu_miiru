@@ -45,7 +45,7 @@ Accepted (2026-08-26)
 ### cron
 
 - **案A（採用）：Vercel Cron**
-  - Hobby は[1 日 1 回まで、かつ指定した「時」のうち任意の分に起動する](https://vercel.com/docs/cron-jobs/manage-cron-jobs)（`0 23 * * *` なら 23:00〜23:59 UTC のどこか）。日次終値の取り込みには十分
+  - Hobby は[cron 1 つにつき 1 日 1 回まで、かつ指定した「時」のうち任意の分に起動する](https://vercel.com/docs/cron-jobs/usage-and-pricing)（`0 23 * * *` なら 23:00〜23:59 UTC のどこか）。cron は 1 プロジェクトに 100 個まで置ける。日次終値の取り込みには十分
   - アプリと同じリポジトリで完結し、追加のサービスが要らない
 - **案B：GitHub Actions を cron 代わりに使う**
   - プライベートリポジトリでも月 2,000 分無料。1 日 1 回の curl なら月 30 分程度で収まる
@@ -78,6 +78,16 @@ Vercel Cron は **GET** で呼び、プロジェクトに `CRON_SECRET` が設�
 
 Vercel の関数は UTC で動き、`TZ` は予約環境変数のため設定できない。暦日は環境変数ではなくコード側で JST 固定にした（ADR 0012）。
 
+### 現在価格は定期実行しない
+
+**cron で回すのは日次終値の取り込みだけとし、現在価格（`/api/batch/price-update`）は定期実行しない。** 現在価格は、所有者がアプリを開いたときにヘッダーの「価格更新」ボタンで更新する（[価格更新の要件](../1-requirements/price-update.md)）。今の使い方では自動更新が要らないため。
+
+自動更新が必要になったら、`/api/batch/price-update` に日次終値バッチと同じ GET の入口（`CRON_SECRET` 認証）を足し、日次終値とは別の cron として [vercel.json](../../vercel.json) に登録する。
+
+## 補足：現在価格を定期実行しない理由の訂正（2026-11-09 追記）
+
+当初は理由を「Hobby の cron は 1 日 1 回までで、その枠を日次終値に使う」と書いていたが、誤りだった。Hobby の制限は cron 1 つにつき 1 日 1 回までで、cron は 1 プロジェクトに 100 個まで置ける（[Usage & Pricing for Cron Jobs](https://vercel.com/docs/cron-jobs/usage-and-pricing)、2026-11-09 に確認）。日次終値とは別に現在価格の cron を足すことはできる。定期実行していないのは制限のためではなく、今は要らないと判断したためである。
+
 ## 決定していないこと
 
 - **TiDB で `$transaction` が実際に通るか**。ドキュメント上は対応しているが、本アプリの `$transaction`（インタラクティブトランザクション）で動くかは**未検証**。デプロイ手順で `/api/batch/initial-balance` を `{"apply":true}` で実行して確認する。通らなければ案B（Neon）へ切り替える
@@ -85,7 +95,6 @@ Vercel の関数は UTC で動き、`TZ` は予約環境変数のため設定で
 - **カスタムドメイン**。`*.vercel.app` のまま。所有者しかログインできないため、覚えやすい URL である必要が無い
 - **バックアップ**。TiDB Cloud Starter の既定に任せ、アプリ側でエクスポートの仕組みは持たない
 - **cron 失敗時の通知**。Vercel は cron の失敗を再試行しない。気づく手段は今のところダッシュボードを見ることだけ
-- **`/api/batch/price-update`（現在価格の更新）の cron 化**。Hobby は 1 日 1 回までで、枠を日次終値に使う
 - **プレビューデプロイの扱い**。本番と同じ DB を向くかどうかを決めていない
 
 ## Consequences
@@ -94,7 +103,7 @@ Vercel の関数は UTC で動き、`TZ` は予約環境変数のため設定で
 - TiDB のパブリックエンドポイントに繋ぐには `DATABASE_URL` に `sslaccept=strict` が要る（[TiDB × Prisma 公式ガイド](https://docs.pingcap.com/tidbcloud/dev-guide-sample-application-nodejs-prisma/)）
 - Google Cloud Console の承認済みリダイレクト URI に `{本番URL}/api/auth/callback/google` を足す必要がある。ローカル用しか登録していないとログインできない
 - `NEXTAUTH_URL` は NextAuth のコールバック先であると同時に、[ダッシュボード](../../src/app/page.tsx)と[資産推移画面](../../src/app/portfolio/page.tsx)がサーバー側から自分の `/api/*` を呼ぶときのベース URL でもある。誤ると画面が 500 になる
-- cron は 1 日 1 回しか動かない。日中に価格を最新化したい場合は、これまでどおり画面から手で更新する
+- 現在価格は自動では更新されない。アプリを開いたらヘッダーの「価格更新」ボタンを押す。セクターの自動入力（ADR 0017）も現在価格の更新に乗っているため、同じくボタンを押したときだけ動く
 
 ### プレモーテム（この決定が誤っていた場合）
 
@@ -107,6 +116,7 @@ Vercel の関数は UTC で動き、`TZ` は予約環境変数のため設定で
 
 - `/api/batch/initial-balance` を `{"apply":true}` で実行して TiDB で失敗したとき（→ Neon へ）。dry-run は `$transaction` を通らないため、この確認には使えない
 - 日次終値の取り込みが 1 日 1 回では足りなくなったとき（→ GitHub Actions へ）
+- 現在価格を自動で更新したくなったとき（→ `/api/batch/price-update` に GET を足し、別の cron として登録する）
 - 日次バッチの実行時間が 300 秒に近づいたとき（保有銘柄が増えて直列処理が伸びたとき）
 - TiDB Cloud Starter の使用量が無料枠（5 GiB）の半分を超えたとき
 - 所有者以外が使い始めたとき（Vercel Hobby の規約に触れる）
