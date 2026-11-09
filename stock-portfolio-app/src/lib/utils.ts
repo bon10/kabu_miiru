@@ -115,7 +115,9 @@ export function calculateProfitLoss(currentPrice: number, avgPrice: number, shar
   const currentValue = currentPrice * shares
   const investmentAmount = avgPrice * shares
   const profitLoss = currentValue - investmentAmount
-  const profitLossRate = investmentAmount > 0 ? profitLoss / investmentAmount : 0
+  // パーセントの値で返す（-6.59% なら -6.59）。取引からの再計算
+  // （recalculateStockAggregates）と単位を揃えるため（docs/2-domain/business-rules.md）
+  const profitLossRate = investmentAmount > 0 ? (profitLoss / investmentAmount) * 100 : 0
 
   return { profitLoss, profitLossRate }
 }

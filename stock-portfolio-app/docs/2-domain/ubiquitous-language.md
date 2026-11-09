@@ -56,7 +56,7 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 ### 損益率（Profit/Loss Rate）
 
-`評価損益 / 投資額 × 100`（%）。
+`評価損益 / 投資額 × 100`（%）。`Stock.profitLossRate` にもパーセントの値で保存する（-6.59% なら -6.59）。表示では `formatPercentage(rate / 100)` とする。
 
 ### 目標価格（Target Price）
 

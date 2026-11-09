@@ -406,7 +406,7 @@ export default function StockDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">評価損益率</p>
                 <p className={`text-2xl font-bold ${profitLossColor}`}>
-                  {formatPercentage(stock.profitLossRate)}
+                  {formatPercentage(stock.profitLossRate / 100)}
                 </p>
               </div>
               <div>
