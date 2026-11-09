@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest'
-import { formatAvgAcquisitionPrice, formatDate, formatDateTime } from '@/lib/utils'
+import {
+  calculateProfitLoss,
+  formatAvgAcquisitionPrice,
+  formatDate,
+  formatDateTime,
+} from '@/lib/utils'
+
+// 損益率はパーセントの値で持つ（docs/2-domain/business-rules.md）。
+// 取引からの再計算（recalculateStockAggregates）と単位を揃えるため。
+describe('calculateProfitLoss', () => {
+  it('損益率をパーセントで返す', () => {
+    // 取得 61.49 → 現在 57.44 の 1 株
+    const { profitLoss, profitLossRate } = calculateProfitLoss(57.44, 61.49, 1)
+    expect(profitLoss).toBeCloseTo(-4.05)
+    expect(profitLossRate).toBeCloseTo(-6.5864, 4)
+  })
+
+  it('投資額が 0 なら損益率は 0', () => {
+    expect(calculateProfitLoss(100, 0, 0).profitLossRate).toBe(0)
+  })
+})
 
 // 平均取得単価の表示規則（ADR 0010）。
 // 取得原価 ÷ 保有株数 は割り切れないことがあるため、表示は小数第2位で四捨五入する。

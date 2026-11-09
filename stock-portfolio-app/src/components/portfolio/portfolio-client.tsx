@@ -138,7 +138,7 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
                         <div className="text-right">
                           <div className="font-medium">{stock.sharesHeld}株 ({formatPercentage(stock.percentage / 100)})</div>
                           <div className={`text-sm ${stock.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatCurrency(stock.profitLoss)} ({formatPercentage(stock.profitLossRate)})
+                            {formatCurrency(stock.profitLoss)} ({formatPercentage(stock.profitLossRate / 100)})
                           </div>
                         </div>
                       </div>
@@ -287,10 +287,10 @@ export default function PortfolioClient({ portfolioData }: PortfolioClientProps)
                       height={100}
                     />
                     <YAxis 
-                      tickFormatter={(value) => formatPercentage(value)}
+                      tickFormatter={(value) => formatPercentage(value / 100)}
                     />
-                    <Tooltip 
-                      formatter={(value: number) => [formatPercentage(value), '損益率']}
+                    <Tooltip
+                      formatter={(value: number) => [formatPercentage(value / 100), '損益率']}
                     />
                     <Legend />
                     <Bar 
