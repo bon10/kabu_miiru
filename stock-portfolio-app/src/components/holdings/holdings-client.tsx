@@ -46,17 +46,20 @@ import {
   type HoldingSort,
   type HoldingSortKey,
 } from '@/lib/holdings-sort'
+import { UNSET_SECTOR } from '@/lib/holdings-filter'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 
 // 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
 //   - デフォルトは「保有」(sharesHeld > 0) のみ表示。
 //   - includeZero トグルで過去に保有していた銘柄も表示（銘柄マスタ全体を確認したい時用）。
+//   - 市場・セクターで絞り込める。絞り込みは API 側で行い、サマリカードの合計も絞り込みに従う。
 interface HoldingRow {
   id: number
   stockName: string
   code: string
   market: string
+  marketSector: string | null
   sharesHeld: number
   avgAcquisitionPrice: number
   investmentAmount: number
@@ -90,12 +93,22 @@ interface GrandTotal {
   brokerCount: number
 }
 
+interface FilterOptions {
+  markets: string[]
+  sectors: string[]
+  hasUnsetSector: boolean
+}
+
 interface ApiResponse {
   data: {
     brokers: BrokerGroup[]
     grandTotal: GrandTotal
+    filterOptions: FilterOptions
   }
 }
+
+// 絞り込みの「すべて」。Radix の SelectItem は空文字を値にできないため専用の値を使う。
+const ALL = 'all'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -133,7 +146,8 @@ function StockNameCell({
   }
 
   return (
-    <TableCell>
+    // 銘柄名だけは折り返してよいが、1〜2 文字ずつの縦長にならない幅を確保する
+    <TableCell className="min-w-[12rem]">
       <div className="flex items-center gap-2">
         <Link
           href={`/stocks/${holding.id}`}
@@ -167,19 +181,17 @@ function StockNameCell({
   )
 }
 
-// 並べ替えできる見出し。押すたびに昇順・降順が入れ替わる。
+// 並べ替えボタン。押すたびに昇順・降順が入れ替わる。
 // 並べ替えの対象列と、対象にしない列の理由は lib/holdings-sort.ts に書いてある。
-function SortableHead({
+function SortButton({
   sortKey,
   sort,
   onSort,
-  align = 'right',
   children,
 }: {
   sortKey: HoldingSortKey
   sort: HoldingSort
   onSort: (key: HoldingSortKey) => void
-  align?: 'left' | 'right'
   children: React.ReactNode
 }) {
   const active = sort.key === sortKey
@@ -190,8 +202,60 @@ function SortableHead({
       : ArrowDown
 
   return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className="inline-flex items-center gap-1 hover:text-foreground"
+    >
+      {children}
+      <Icon
+        className={cn(
+          'h-3.5 w-3.5 shrink-0',
+          active ? 'text-foreground' : 'text-muted-foreground/60'
+        )}
+      />
+    </button>
+  )
+}
+
+// 2 段の見出し・セルで、上下の段を縦に並べる。
+function Stacked({
+  align,
+  children,
+}: {
+  align: 'left' | 'right'
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col gap-0.5',
+        align === 'right' ? 'items-end' : 'items-start'
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+// 並べ替えできる見出し。items を 2 つ渡すと上下 2 段にし、段ごとに並べ替えボタンを置く。
+// 2 項目を 1 つのボタンで並べ替えると、どちらで並んでいるか分からなくなるため。
+function SortableHead({
+  items,
+  sort,
+  onSort,
+  align = 'right',
+}: {
+  items: { key: HoldingSortKey; label: string }[]
+  sort: HoldingSort
+  onSort: (key: HoldingSortKey) => void
+  align?: 'left' | 'right'
+}) {
+  const active = items.some((item) => item.key === sort.key)
+
+  return (
     <TableHead
-      className={align === 'right' ? 'text-right' : undefined}
+      className={cn('whitespace-nowrap', align === 'right' && 'text-right')}
       aria-sort={
         active
           ? sort.direction === 'asc'
@@ -200,20 +264,144 @@ function SortableHead({
           : 'none'
       }
     >
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className="inline-flex items-center gap-1 hover:text-foreground"
-      >
-        {children}
-        <Icon
-          className={cn(
-            'h-3.5 w-3.5 shrink-0',
-            active ? 'text-foreground' : 'text-muted-foreground/60'
-          )}
-        />
-      </button>
+      <Stacked align={align}>
+        {items.map((item) => (
+          <SortButton
+            key={item.key}
+            sortKey={item.key}
+            sort={sort}
+            onSort={onSort}
+          >
+            {item.label}
+          </SortButton>
+        ))}
+      </Stacked>
     </TableHead>
+  )
+}
+
+// 保有一覧の見出し。列が多く見出しが縦に折り返されていたため、関係の深い項目を
+// 上下 2 段にまとめて列数を減らしている。行（HoldingTableRow）の段と順序を合わせること。
+// 証券会社の列はフラット表示だけが持つ（証券会社別表示はグループの見出しに出る）。
+function HoldingsTableHeader({
+  sort,
+  onSort,
+  showBroker,
+}: {
+  sort: HoldingSort
+  onSort: (key: HoldingSortKey) => void
+  showBroker: boolean
+}) {
+  return (
+    <TableHeader>
+      <TableRow>
+        <SortableHead
+          items={[{ key: 'stockName', label: '銘柄' }]}
+          sort={sort}
+          onSort={onSort}
+          align="left"
+        />
+        {showBroker && (
+          <SortableHead
+            items={[{ key: 'brokerName', label: '証券会社' }]}
+            sort={sort}
+            onSort={onSort}
+            align="left"
+          />
+        )}
+        <SortableHead
+          items={[
+            { key: 'market', label: '市場' },
+            { key: 'marketSector', label: 'セクター' },
+          ]}
+          sort={sort}
+          onSort={onSort}
+          align="left"
+        />
+        <SortableHead
+          items={[{ key: 'sharesHeld', label: '保有株数' }]}
+          sort={sort}
+          onSort={onSort}
+        />
+        <TableHead className="whitespace-nowrap text-right">
+          <Stacked align="right">
+            <span
+              className="cursor-help underline decoration-dotted underline-offset-4"
+              title={AVG_ACQUISITION_PRICE_NOTE}
+            >
+              平均取得
+            </span>
+            <span>現在価格</span>
+          </Stacked>
+        </TableHead>
+        <SortableHead
+          items={[
+            { key: 'investmentAmount', label: '投資額' },
+            { key: 'currentValue', label: '評価額' },
+          ]}
+          sort={sort}
+          onSort={onSort}
+        />
+        <SortableHead
+          items={[{ key: 'profitLoss', label: '評価損益' }]}
+          sort={sort}
+          onSort={onSort}
+        />
+        <SortableHead
+          items={[{ key: 'ytdDividend', label: '今年の配当' }]}
+          sort={sort}
+          onSort={onSort}
+        />
+      </TableRow>
+    </TableHeader>
+  )
+}
+
+// 保有一覧の 1 行。brokerName を渡したときだけ証券会社の列を出す（フラット表示）。
+function HoldingTableRow({
+  holding: h,
+  brokerName,
+  onUpdated,
+}: {
+  holding: HoldingRow
+  brokerName?: string
+  onUpdated: () => void
+}) {
+  return (
+    <TableRow>
+      <StockNameCell holding={h} onUpdated={onUpdated} />
+      {brokerName !== undefined && (
+        <TableCell className="whitespace-nowrap">{brokerName}</TableCell>
+      )}
+      <TableCell className="whitespace-nowrap">
+        <Stacked align="left">
+          <span>{h.market}</span>
+          <span>{h.marketSector ?? '-'}</span>
+        </Stacked>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-right">{h.sharesHeld}</TableCell>
+      <TableCell className="whitespace-nowrap text-right">
+        <Stacked align="right">
+          <span>{formatAvgAcquisitionPrice(h.avgAcquisitionPrice, h.market)}</span>
+          <span>{formatPrice(h.currentPrice, h.market)}</span>
+        </Stacked>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-right">
+        <Stacked align="right">
+          <span>{formatCurrency(h.investmentAmount)}</span>
+          <span>{formatCurrency(h.currentValue)}</span>
+        </Stacked>
+      </TableCell>
+      <TableCell
+        className={cn('whitespace-nowrap text-right', profitColor(h.profitLoss))}
+      >
+        <div>{formatCurrency(h.profitLoss)}</div>
+        <div className="text-xs">{formatPercentage(h.profitLossRate / 100)}</div>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-right">
+        {h.ytdDividend > 0 ? formatCurrency(h.ytdDividend) : '-'}
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -232,13 +420,23 @@ export default function HoldingsClient() {
   const [newStockOpen, setNewStockOpen] = useState(false)
   // null はユーザーが見出しを押していない状態。表示モードごとの既定で並べる。
   const [sort, setSort] = useState<HoldingSort | null>(null)
+  const [marketFilter, setMarketFilter] = useState(ALL)
+  const [sectorFilter, setSectorFilter] = useState(ALL)
 
+  const query = new URLSearchParams({ includeZero: String(includeZero) })
+  if (marketFilter !== ALL) query.set('market', marketFilter)
+  if (sectorFilter !== ALL) query.set('sector', sectorFilter)
+
+  // 絞り込みを変えるとキーが変わる。前の結果を出したままにして、
+  // 選択肢（filterOptions）や表が読み込みのたびに消えないようにする。
   const { data, isLoading, mutate } = useSWR<ApiResponse>(
-    `/api/holdings/by-broker?includeZero=${includeZero}`,
-    fetcher
+    `/api/holdings/by-broker?${query}`,
+    fetcher,
+    { keepPreviousData: true }
   )
 
   const grand = data?.data.grandTotal
+  const filterOptions = data?.data.filterOptions
 
   const brokers = useMemo(() => data?.data.brokers ?? [], [data])
 
@@ -288,6 +486,35 @@ export default function HoldingsClient() {
             />
             保有0の銘柄も表示
           </label>
+          <Select value={marketFilter} onValueChange={setMarketFilter}>
+            <SelectTrigger className="w-[130px]" aria-label="市場で絞り込む">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>市場: すべて</SelectItem>
+              {filterOptions?.markets.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sectorFilter} onValueChange={setSectorFilter}>
+            <SelectTrigger className="w-[200px]" aria-label="セクターで絞り込む">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>セクター: すべて</SelectItem>
+              {filterOptions?.sectors.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+              {filterOptions?.hasUnsetSector && (
+                <SelectItem value={UNSET_SECTOR}>未設定</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
           <Select
             value={viewMode}
             onValueChange={(v) => setViewMode(v as ViewMode)}
@@ -396,109 +623,19 @@ export default function HoldingsClient() {
           </CardHeader>
           <CardContent>
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortableHead
-                    sortKey="stockName"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                    align="left"
-                  >
-                    銘柄
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="brokerName"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                    align="left"
-                  >
-                    証券会社
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="market"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                    align="left"
-                  >
-                    市場
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="sharesHeld"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                  >
-                    保有株数
-                  </SortableHead>
-                  <TableHead className="text-right">
-                    <span
-                      className="cursor-help underline decoration-dotted underline-offset-4"
-                      title={AVG_ACQUISITION_PRICE_NOTE}
-                    >
-                      平均取得
-                    </span>
-                  </TableHead>
-                  <TableHead className="text-right">現在価格</TableHead>
-                  <SortableHead
-                    sortKey="investmentAmount"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                  >
-                    投資額
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="currentValue"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                  >
-                    評価額
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="profitLoss"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                  >
-                    評価損益
-                  </SortableHead>
-                  <SortableHead
-                    sortKey="ytdDividend"
-                    sort={effectiveSort}
-                    onSort={handleSort}
-                  >
-                    今年の配当
-                  </SortableHead>
-                </TableRow>
-              </TableHeader>
+              <HoldingsTableHeader
+                sort={effectiveSort}
+                onSort={handleSort}
+                showBroker
+              />
               <TableBody>
                 {flatRows.map((h) => (
-                  <TableRow key={h.id}>
-                    <StockNameCell holding={h} onUpdated={mutate} />
-                    <TableCell>{h.brokerName}</TableCell>
-                    <TableCell>{h.market}</TableCell>
-                    <TableCell className="text-right">{h.sharesHeld}</TableCell>
-                    <TableCell className="text-right">
-                      {formatAvgAcquisitionPrice(h.avgAcquisitionPrice, h.market)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatPrice(h.currentPrice, h.market)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(h.investmentAmount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(h.currentValue)}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right ${profitColor(h.profitLoss)}`}
-                    >
-                      <div>{formatCurrency(h.profitLoss)}</div>
-                      <div className="text-xs">
-                        {formatPercentage(h.profitLossRate / 100)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {h.ytdDividend > 0 ? formatCurrency(h.ytdDividend) : '-'}
-                    </TableCell>
-                  </TableRow>
+                  <HoldingTableRow
+                    key={h.id}
+                    holding={h}
+                    brokerName={h.brokerName}
+                    onUpdated={mutate}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -538,104 +675,14 @@ export default function HoldingsClient() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHead
-                      sortKey="stockName"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                      align="left"
-                    >
-                      銘柄
-                    </SortableHead>
-                    <SortableHead
-                      sortKey="market"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                      align="left"
-                    >
-                      市場
-                    </SortableHead>
-                    <SortableHead
-                      sortKey="sharesHeld"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                    >
-                      保有株数
-                    </SortableHead>
-                    <TableHead className="text-right">
-                      <span
-                        className="cursor-help underline decoration-dotted underline-offset-4"
-                        title={AVG_ACQUISITION_PRICE_NOTE}
-                      >
-                        平均取得
-                      </span>
-                    </TableHead>
-                    <TableHead className="text-right">現在価格</TableHead>
-                    <SortableHead
-                      sortKey="investmentAmount"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                    >
-                      投資額
-                    </SortableHead>
-                    <SortableHead
-                      sortKey="currentValue"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                    >
-                      評価額
-                    </SortableHead>
-                    <SortableHead
-                      sortKey="profitLoss"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                    >
-                      評価損益
-                    </SortableHead>
-                    <SortableHead
-                      sortKey="ytdDividend"
-                      sort={effectiveSort}
-                      onSort={handleSort}
-                    >
-                      今年の配当
-                    </SortableHead>
-                  </TableRow>
-                </TableHeader>
+                <HoldingsTableHeader
+                  sort={effectiveSort}
+                  onSort={handleSort}
+                  showBroker={false}
+                />
                 <TableBody>
                   {broker.holdings.map((h) => (
-                    <TableRow key={h.id}>
-                      <StockNameCell holding={h} onUpdated={mutate} />
-                      <TableCell>{h.market}</TableCell>
-                      <TableCell className="text-right">
-                        {h.sharesHeld}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatAvgAcquisitionPrice(h.avgAcquisitionPrice, h.market)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatPrice(h.currentPrice, h.market)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(h.investmentAmount)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(h.currentValue)}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right ${profitColor(h.profitLoss)}`}
-                      >
-                        <div>{formatCurrency(h.profitLoss)}</div>
-                        <div className="text-xs">
-                          {formatPercentage(h.profitLossRate / 100)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {h.ytdDividend > 0
-                          ? formatCurrency(h.ytdDividend)
-                          : '-'}
-                      </TableCell>
-                    </TableRow>
+                    <HoldingTableRow key={h.id} holding={h} onUpdated={mutate} />
                   ))}
                 </TableBody>
               </Table>
