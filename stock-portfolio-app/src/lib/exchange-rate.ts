@@ -84,6 +84,22 @@ export async function getCurrentUsdJpyRate(
   throw new Error('USD/JPY レートを取得できませんでした（Yahoo 取得失敗・保存済みレートなし）')
 }
 
+// 保存済みの最新の USD/JPY レートを返す。Yahoo には問い合わせず、DB にも書かない。
+// 読み取り専用の DB ユーザーで動く MCP サーバー（mcp/）用。当日分は毎朝の
+// 日次終値バッチ（ADR 0013）か、その日最初に画面を開いたときに保存される。
+export async function getLatestStoredUsdJpyRate(
+  client: PrismaClientOrTx = prisma,
+): Promise<{ rate: number; rateDate: Date }> {
+  const latest = await client.exchangeRate.findFirst({
+    where: { base: BASE, quote: QUOTE },
+    orderBy: { rateDate: 'desc' },
+  })
+  if (!latest) {
+    throw new Error('保存済みの USD/JPY レートがありません。アプリの画面を一度開くと当日分が保存されます。')
+  }
+  return { rate: Number(latest.rate), rateDate: latest.rateDate }
+}
+
 export interface RateBackfillSummary {
   range: string
   success: boolean

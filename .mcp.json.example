@@ -7,6 +7,9 @@
         "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer YourNotionApiToken\", \"Notion-Version\": \"2022-06-28\" }"
       }
     },
+    "kabu-miiru": {
+      "command": "stock-portfolio-app/mcp/bin/start.sh"
+    },
     "github": {
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",

@@ -12,7 +12,7 @@ import { getApiSymbol } from '@/lib/utils'
 // 分類に揃っている必要があるため。
 
 // https://finance.yahoo.com/sectors/ の一覧（2026-11-09 に確認）
-const YAHOO_SECTORS = [
+export const YAHOO_SECTORS = [
   'Basic Materials',
   'Communication Services',
   'Consumer Cyclical',
