@@ -1,22 +1,15 @@
 import { NextRequest } from 'next/server'
-import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
-import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
-import { toJpy, toJpyByCurrency } from '@/lib/currency'
-import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
-import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
+import { loadHoldingRows, type HoldingRow } from '@/lib/holdings'
 import { holdingFilterOptions, matchesHoldingFilter } from '@/lib/holdings-filter'
 
 // 証券会社別の保有銘柄ビュー。
 // 各証券会社のサマリと、その下の銘柄リストを返す。
-// ドメイン用語は docs/2-domain/ubiquitous-language.md を参照。
+// 1 銘柄ぶんの値（円換算・年初来配当）の作り方は loadHoldingRows を参照。
 //   - デフォルト: 保有株数 > 0 の銘柄のみ（= 現保有）
 //   - includeZero=true: 過去に保有していた銘柄も含める
 //   - market / sector: 市場・セクターで絞り込む（sector=__unset__ でセクター未入力の銘柄）。
 //     合計も絞り込んだ銘柄だけで計算する。filterOptions は絞り込む前の銘柄から作る
-// 金額（投資額・評価額・損益）は円ベース。米国株は当日の USD/JPY レートで
-// 円換算する。単価（平均取得・現在価格）はドル建てのまま返し、表示側で $ 表記する。
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -25,66 +18,14 @@ export async function GET(request: NextRequest) {
       market: searchParams.get('market') ?? undefined,
       sector: searchParams.get('sector') ?? undefined,
     }
-    // 配当合計はカレンダー年で集計する（ADR 0004）。年の境目は JST で判定する（ADR 0012）
-    const yearStart = dateKeyOf(dateKeyParts(toDateKey(new Date())).year, 0, 1)
 
-    const stockWhere: Prisma.StockWhereInput = includeZero
-      ? {}
-      : { sharesHeld: { gt: 0 } }
+    const { rows: allRows } = await loadHoldingRows({ includeZero })
 
-    const [allStocks, dividends, usdJpyRate] = await Promise.all([
-      prisma.stock.findMany({
-        where: stockWhere,
-        orderBy: { stockName: 'asc' },
-      }),
-      prisma.dividendHistory.findMany({
-        where: { paymentDate: { gte: yearStart } },
-        select: {
-          stockId: true,
-          dividendAmount: true,
-          netAmount: true,
-          currency: true,
-        },
-      }),
-      getCurrentUsdJpyRate(),
-    ])
+    const filterOptions = holdingFilterOptions(allRows)
+    const rows = allRows.filter((r) => matchesHoldingFilter(r, filter))
 
-    const filterOptions = holdingFilterOptions(allStocks)
-    const stocks = allStocks.filter((s) => matchesHoldingFilter(s, filter))
-
-    // 年初来配当は手取り（受取金額）基準で積む。受取金額を持たない旧レコードは
-    // 税引前で代用する（ADR 0015）。円換算は銘柄の市場ではなくレコードの受取通貨で
-    // 判定する（米国株でも証券会社の円受取があるため。ADR 0006）
-    const ytdDividendByStock = new Map<number, number>()
-    for (const d of dividends) {
-      const prev = ytdDividendByStock.get(d.stockId) ?? 0
-      const net = netDividendAmount(
-        Number(d.dividendAmount),
-        toNullableNumber(d.netAmount),
-      )
-      ytdDividendByStock.set(
-        d.stockId,
-        prev + toJpyByCurrency(net, d.currency, usdJpyRate),
-      )
-    }
-
-    type HoldingRow = {
-      id: number
-      stockName: string
-      code: string
-      market: string
-      marketSector: string | null
-      sharesHeld: number
-      avgAcquisitionPrice: number
-      investmentAmount: number
-      currentPrice: number
-      currentValue: number
-      profitLoss: number
-      profitLossRate: number
-      ytdDividend: number
-      priceUpdateStatus: string
-      priceUpdateError: string | null
-    }
+    // 証券会社名はグループの見出しに出すので、各行には含めない
+    type BrokerHoldingRow = Omit<HoldingRow, 'brokerName' | 'lastPriceUpdate'>
 
     type BrokerGroup = {
       brokerName: string
@@ -94,41 +35,17 @@ export async function GET(request: NextRequest) {
       totalProfitLoss: number
       totalProfitLossRate: number
       totalYtdDividend: number
-      holdings: HoldingRow[]
+      holdings: BrokerHoldingRow[]
     }
 
     const brokerMap = new Map<string, BrokerGroup>()
 
-    for (const s of stocks) {
-      const sharesHeld = Number(s.sharesHeld)
-      const currentPrice = Number(s.currentPrice) // 単価はドル建てのまま（表示側で $ 表記）
-      // 金額系は米国株のみ当日レートで円換算する
-      const investmentAmount = toJpy(Number(s.investmentAmount), s.market, usdJpyRate)
-      const currentValue = toJpy(sharesHeld * currentPrice, s.market, usdJpyRate)
-      const profitLoss = toJpy(Number(s.profitLoss), s.market, usdJpyRate)
-      const profitLossRate = Number(s.profitLossRate) // 率は換算不変
-      const ytdDividend = ytdDividendByStock.get(s.id) ?? 0
+    for (const r of rows) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { brokerName, lastPriceUpdate, ...row } = r
 
-      const row: HoldingRow = {
-        id: s.id,
-        stockName: s.stockName,
-        code: s.code,
-        market: s.market,
-        marketSector: s.marketSector || null,
-        sharesHeld,
-        avgAcquisitionPrice: Number(s.avgAcquisitionPrice),
-        investmentAmount,
-        currentPrice,
-        currentValue,
-        profitLoss,
-        profitLossRate,
-        ytdDividend,
-        priceUpdateStatus: s.priceUpdateStatus,
-        priceUpdateError: s.priceUpdateError,
-      }
-
-      const group = brokerMap.get(s.holdingCompany) ?? {
-        brokerName: s.holdingCompany,
+      const group = brokerMap.get(brokerName) ?? {
+        brokerName,
         stockCount: 0,
         totalInvestment: 0,
         totalCurrentValue: 0,
@@ -138,12 +55,12 @@ export async function GET(request: NextRequest) {
         holdings: [],
       }
       group.stockCount += 1
-      group.totalInvestment += investmentAmount
-      group.totalCurrentValue += currentValue
-      group.totalProfitLoss += profitLoss
-      group.totalYtdDividend += ytdDividend
+      group.totalInvestment += row.investmentAmount
+      group.totalCurrentValue += row.currentValue
+      group.totalProfitLoss += row.profitLoss
+      group.totalYtdDividend += row.ytdDividend
       group.holdings.push(row)
-      brokerMap.set(s.holdingCompany, group)
+      brokerMap.set(brokerName, group)
     }
 
     const brokers = Array.from(brokerMap.values())
