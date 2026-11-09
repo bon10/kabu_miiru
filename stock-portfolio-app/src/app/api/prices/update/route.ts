@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, handleApiError } from '@/lib/api-response'
 import { fetchStockPrice, getCurrentMarketSession } from '@/lib/stock-price'
+import { updateSectorIfNeeded } from '@/lib/sector'
 import { calculateProfitLoss } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
@@ -118,6 +119,8 @@ export async function POST(request: NextRequest) {
         
         failedCount++
       }
+
+      await updateSectorIfNeeded(stock)
     }
 
     return Response.json(createSuccessResponse({

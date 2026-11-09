@@ -210,6 +210,21 @@ async function fetchWithDelay(
 }
 ```
 
+#### セクターの取得
+
+銘柄のセクター（`Stock.marketSector`）は、価格とは別の quoteSummary エンドポイントから取得する（[sector.ts](../src/lib/sector.ts)）。価格更新（`/api/prices/update`・`/api/batch/price-update`）のついでに、セクターが Yahoo の分類か「ETF」になっていない銘柄だけ問い合わせる。
+
+```
+GET https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=assetProfile,quoteType&crumb={crumb}
+```
+
+- **Cookie と crumb が必要**：chart エンドポイントと違い、無いと 401（`Invalid Crumb`）が返る。`https://fc.yahoo.com` で Cookie を受け取り、その Cookie を付けて `https://query1.finance.yahoo.com/v1/test/getcrumb` から crumb を得る
+- **取得値**：`quoteSummary.result[0].assetProfile.sector`。`quoteType.quoteType` が `ETF` の銘柄は sector が返らないので「ETF」として保存する
+- **分類**：Yahoo 独自の 11 分類（Basic Materials / Communication Services / Consumer Cyclical / Consumer Defensive / Energy / Financial Services / Healthcare / Industrials / Real Estate / Technology / Utilities）。GICS とは名前も銘柄の振り分けも一致しない
+- **失敗時**：ログを残すだけで、価格更新は失敗扱いにしない
+
+> **確認方法と限界**：2026-11-09 に、7203.T・AAPL・VOO・1306.T などで上記リクエストを実行して確認した。11 分類は `https://finance.yahoo.com/sectors/` の一覧で確認した。chart エンドポイントと同じく非公式であり、予告なく変わりうる。
+
 ## USD/JPY 為替レート
 
 米国株はドル建てで取得・保存されるため、円換算用に USD/JPY レートを取得します（ADR 0005）。株価と同じ Yahoo Finance のチャートエンドポイントを、為替シンボル `USDJPY=X` に対して呼び出します。

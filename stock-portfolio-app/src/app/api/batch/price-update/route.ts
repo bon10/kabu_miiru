@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { fetchMultipleStockPrices, getCurrentMarketSession, shouldUpdatePrice } from '@/lib/stock-price'
+import { updateSectorIfNeeded } from '@/lib/sector'
 import { calculateProfitLoss } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
@@ -29,7 +30,8 @@ export async function POST(request: NextRequest) {
         currentPrice: true,
         lastPriceUpdate: true,
         avgAcquisitionPrice: true,
-        sharesHeld: true
+        sharesHeld: true,
+        marketSector: true
       }
     })
 
@@ -151,6 +153,8 @@ export async function POST(request: NextRequest) {
           error: priceResult.error || 'Price fetch failed'
         })
       }
+
+      await updateSectorIfNeeded(stock)
     }
 
     return Response.json(createSuccessResponse({
