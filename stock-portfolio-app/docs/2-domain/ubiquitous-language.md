@@ -134,11 +134,11 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 ### 配当利回り（Dividend Yield）
 
-`予想配当 / 現在価格 × 100`（%）。マスタ情報として手動維持。実装フィールド：`Stock.dividendYield`。
+`予想配当 / 現在価格 × 100`（%）。パーセントの値で扱う（2.74% なら 2.74）。保存せず、読み取りのたびに計算する（BR-201 / ADR 0019）。実装：[dividendYieldOf](../../src/lib/expected-dividend.ts)。API のフィールド名は `dividendYield`。
 
 ### 予想年間配当額（Expected Annual Dividend）
 
-`予想配当 × 保有株数`。銘柄マスタから算出される「今の保有で 1 年間持ち続けたら期待できる配当額」。実装フィールド：`Stock.dividendAmount`（※現状の実装で名前が曖昧なので UI では「予想年間配当」と表記する方針）。
+`予想配当 × 保有株数`。銘柄マスタから算出される「今の保有で 1 年間持ち続けたら期待できる配当額」。保存せず、読み取りのたびに計算する（BR-200 / ADR 0019）。実装：[expectedAnnualDividendOf](../../src/lib/expected-dividend.ts)。API のフィールド名は `dividendAmount`（※受取配当の `DividendHistory.dividendAmount` と紛らわしいので UI では「予想年間配当」と表記する方針）。
 
 ### 受取配当（Dividend Receipt）
 
@@ -299,7 +299,7 @@ TSV から一括で取り込んだ保有は、いつ買ったかの記録を持�
 | ドメイン概念 | UI ラベル                           | データソース                      |
 | ------------ | ----------------------------------- | --------------------------------- |
 | 予想配当     | 「予想配当」or「1株配当金（予想）」 | `Stock.dividendPerShare`          |
-| 予想年間配当 | 「予想年間配当」                    | `Stock.dividendAmount`            |
+| 予想年間配当 | 「予想年間配当」                    | 1株配当金 × 保有株数              |
 | 受取配当     | 「受取配当」or「配当受取」          | `DividendHistory`                 |
 | 手取り配当   | 「受取金額（手取り）」              | `DividendHistory.netAmount`       |
 | 税引前配当   | 「配当・分配金合計（税引前）」      | `DividendHistory.dividendAmount`  |

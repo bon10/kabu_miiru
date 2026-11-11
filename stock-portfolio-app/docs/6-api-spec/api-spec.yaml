@@ -1547,9 +1547,17 @@ components:
         dividendYield:
           type: number
           format: decimal
+          readOnly: true
+          description: >-
+            配当利回り（予想）。パーセントの値（2.74% なら 2.74）。
+            1株配当金 ÷ 現在価格 × 100 で読み取り時に計算し、保存しない（BR-201 / ADR 0019）
         dividendAmount:
           type: number
           format: decimal
+          readOnly: true
+          description: >-
+            予想年間配当。1株配当金 × 保有株数 で読み取り時に計算し、保存しない
+            （BR-200 / ADR 0019）。1株配当金と同じ通貨建て
         firstPurchaseDate:
           type: string
           format: date
@@ -1625,10 +1633,6 @@ components:
           format: decimal
           default: 0
         dividendPerShare:
-          type: number
-          format: decimal
-          default: 0
-        dividendYield:
           type: number
           format: decimal
           default: 0

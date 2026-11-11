@@ -16,7 +16,6 @@ interface StockFormData {
   holdingCompany: string
   market: string
   dividendPerShare: number
-  dividendYield: number
   targetPrice: string
   marketSector: string
   purpose: string
@@ -40,7 +39,6 @@ const defaultFormData: StockFormData = {
   holdingCompany: '',
   market: '',
   dividendPerShare: 0,
-  dividendYield: 0,
   targetPrice: '',
   marketSector: '',
   purpose: '',
@@ -88,7 +86,6 @@ export default function StockForm({
         holdingCompany: formData.holdingCompany,
         market: formData.market,
         dividendPerShare: Number(formData.dividendPerShare),
-        dividendYield: Number(formData.dividendYield),
         targetPrice: formData.targetPrice ? Number(formData.targetPrice) : null,
         marketSector: formData.marketSector || null,
         purpose: formData.purpose || null,
@@ -306,8 +303,8 @@ export default function StockForm({
           <CardHeader>
             <CardTitle>配当情報（予想）</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              期待される 1 株あたり年間配当。実際の受取記録は配当ページ /
-              銘柄詳細から追加します。
+              期待される 1 株あたり年間配当。配当利回りと予想年間配当はこの値から
+              計算します。実際の受取記録は配当ページ / 銘柄詳細から追加します。
             </p>
           </CardHeader>
           <CardContent>
@@ -324,21 +321,6 @@ export default function StockForm({
                     handleChange('dividendPerShare', e.target.value)
                   }
                   className="w-full p-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  配当利回り（予想）
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={formData.dividendYield}
-                  onChange={(e) =>
-                    handleChange('dividendYield', e.target.value)
-                  }
-                  className="w-full p-2 border rounded-md"
-                  placeholder="例: 0.03 (3%)"
                 />
               </div>
             </div>

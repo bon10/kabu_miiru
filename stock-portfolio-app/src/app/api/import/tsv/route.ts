@@ -70,8 +70,10 @@ export async function POST(request: NextRequest) {
           profitLoss,
           profitLossRate,
           dividendPerShare,
-          dividendYield,
-          dividendAmount,
+          // 配当利回り・配当金額の列は読み飛ばす。どちらも 1株配当金から読み取り時に
+          // 計算する（ADR 0019）。列の位置で読むため、列そのものはフォーマットに残す。
+          ,
+          ,
           purchaseDate,
           saleDate,
           realizedProfitLoss,
@@ -119,8 +121,6 @@ export async function POST(request: NextRequest) {
           profitLoss: parseDecimal(profitLoss),
           profitLossRate: parseDecimal(profitLossRate),
           dividendPerShare: parseDecimal(dividendPerShare),
-          dividendYield: parseDecimal(dividendYield),
-          dividendAmount: parseDecimal(dividendAmount),
           // TSV は購入日を 1 列しか持たない。取引履歴を伴わないインポートでは
           // 初回・最終を区別できないため、同じ日付を両方に入れる。取引が登録されれば
           // recalculateStockAggregates が Transaction から両方を上書きする。

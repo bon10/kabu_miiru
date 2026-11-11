@@ -4,6 +4,7 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { getMarketFromCode } from '@/lib/utils'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy } from '@/lib/currency'
+import { dividendYieldOf, expectedAnnualDividendOf } from '@/lib/expected-dividend'
 import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
@@ -69,8 +70,8 @@ export async function GET(request: NextRequest) {
         profitLoss: toJpy(Number(stock.profitLoss), stock.market, usdJpyRate),
         profitLossRate: Number(stock.profitLossRate),
         dividendPerShare: Number(stock.dividendPerShare),
-        dividendYield: Number(stock.dividendYield),
-        dividendAmount: Number(stock.dividendAmount),
+        dividendYield: dividendYieldOf(Number(stock.dividendPerShare), Number(stock.currentPrice)),
+        dividendAmount: expectedAnnualDividendOf(Number(stock.dividendPerShare), Number(stock.sharesHeld)),
         realizedProfitLoss: stock.realizedProfitLoss ? Number(stock.realizedProfitLoss) : null,
         targetPrice: stock.targetPrice ? Number(stock.targetPrice) : null
       })),
@@ -111,7 +112,6 @@ export async function POST(request: NextRequest) {
         avgAcquisitionPrice: body.avgAcquisitionPrice || 0,
         investmentAmount: body.investmentAmount || 0,
         dividendPerShare: body.dividendPerShare || 0,
-        dividendYield: body.dividendYield || 0,
         // 銘柄登録時点では購入日は 1 つしか受け取らない。以後の取引登録で
         // recalculateStockAggregates が Transaction から初回・最終を上書きする。
         firstPurchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
@@ -131,8 +131,8 @@ export async function POST(request: NextRequest) {
       profitLoss: Number(stock.profitLoss),
       profitLossRate: Number(stock.profitLossRate),
       dividendPerShare: Number(stock.dividendPerShare),
-      dividendYield: Number(stock.dividendYield),
-      dividendAmount: Number(stock.dividendAmount),
+      dividendYield: dividendYieldOf(Number(stock.dividendPerShare), Number(stock.currentPrice)),
+      dividendAmount: expectedAnnualDividendOf(Number(stock.dividendPerShare), Number(stock.sharesHeld)),
       realizedProfitLoss: stock.realizedProfitLoss ? Number(stock.realizedProfitLoss) : null,
       targetPrice: stock.targetPrice ? Number(stock.targetPrice) : null
     }), { status: 201 })
