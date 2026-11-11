@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { expectedAnnualDividendOf } from './expected-dividend'
 
 export async function seedDatabase() {
   try {
@@ -23,8 +24,6 @@ export async function seedDatabase() {
         profitLoss: 40000,
         profitLossRate: 14.29,
         dividendPerShare: 220,
-        dividendYield: 0.0688,
-        dividendAmount: 22000,
         purchaseDate: new Date('2023-06-15'),
         targetPrice: 3500,
         marketSector: '自動車',
@@ -45,8 +44,6 @@ export async function seedDatabase() {
         profitLoss: 750,
         profitLossRate: 8.33,
         dividendPerShare: 0.96,
-        dividendYield: 0.0049,
-        dividendAmount: 48,
         purchaseDate: new Date('2023-08-20'),
         targetPrice: 220,
         marketSector: 'テクノロジー',
@@ -67,8 +64,6 @@ export async function seedDatabase() {
         profitLoss: -56000,
         profitLossRate: -5.6,
         dividendPerShare: 60,
-        dividendYield: 0.0051,
-        dividendAmount: 4800,
         purchaseDate: new Date('2023-05-10'),
         targetPrice: 14000,
         marketSector: 'エンターテインメント',
@@ -89,8 +84,6 @@ export async function seedDatabase() {
         profitLoss: 900,
         profitLossRate: 8.57,
         dividendPerShare: 3.00,
-        dividendYield: 0.0079,
-        dividendAmount: 90,
         purchaseDate: new Date('2023-07-05'),
         targetPrice: 420,
         marketSector: 'ソフトウェア',
@@ -111,8 +104,6 @@ export async function seedDatabase() {
         profitLoss: 80000,
         profitLossRate: 6.90,
         dividendPerShare: 200,
-        dividendYield: 0.0032,
-        dividendAmount: 4000,
         purchaseDate: new Date('2023-04-12'),
         targetPrice: 70000,
         marketSector: 'ゲーム',
@@ -165,11 +156,12 @@ export async function seedDatabase() {
 
       // 配当履歴がある場合は作成
       // 受取通貨は銘柄の市場に合わせる（米国株の配当はドル建て）
-      if (stockData.dividendAmount > 0) {
+      const annualDividend = expectedAnnualDividendOf(stockData.dividendPerShare, stockData.sharesHeld)
+      if (annualDividend > 0) {
         await prisma.dividendHistory.create({
           data: {
             stockId: stock.id,
-            dividendAmount: stockData.dividendAmount,
+            dividendAmount: annualDividend,
             currency: stockData.market === '米国' ? 'USD' : 'JPY',
             paymentDate: new Date('2023-12-15'),
             dividendType: '期末'

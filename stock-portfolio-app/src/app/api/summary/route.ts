@@ -4,10 +4,11 @@ import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy, toJpyByCurrency } from '@/lib/currency'
 import { dateKeyOf, dateKeyParts, toDateKey } from '@/lib/date-key'
 import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
+import { expectedAnnualDividendOf } from '@/lib/expected-dividend'
 
 // ダッシュボード用サマリ API。
 // 用語は docs/2-domain/ubiquitous-language.md を参照。
-//   - expectedAnnualDividend: 予想年間配当（マスタ由来）
+//   - expectedAnnualDividend: 予想年間配当（1株配当金 × 保有株数、BR-200）
 //   - ytdDividendReceived: YTD 配当（実際に受け取った手取り額、DividendHistory 由来、ADR 0004 / 0015）
 // 金額は全て円ベース。米国株のドル建て値は当日の USD/JPY レートで円換算する。
 export async function GET() {
@@ -32,7 +33,11 @@ export async function GET() {
     const profitLossJpy = (s: (typeof stocks)[number]) =>
       toJpy(Number(s.profitLoss), s.market, usdJpyRate)
     const dividendJpy = (s: (typeof stocks)[number]) =>
-      toJpy(Number(s.dividendAmount), s.market, usdJpyRate)
+      toJpy(
+        expectedAnnualDividendOf(Number(s.dividendPerShare), Number(s.sharesHeld)),
+        s.market,
+        usdJpyRate,
+      )
 
     const totalInvestment = stocks.reduce((sum, stock) => sum + investmentJpy(stock), 0)
     const totalCurrentValue = holdingStocks.reduce((sum, stock) => sum + currentValueJpy(stock), 0)

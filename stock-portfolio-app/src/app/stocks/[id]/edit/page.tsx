@@ -36,7 +36,6 @@ export default function EditStockPage() {
           holdingCompany: stock.holdingCompany,
           market: stock.market,
           dividendPerShare: stock.dividendPerShare,
-          dividendYield: stock.dividendYield,
           targetPrice: stock.targetPrice ?? '',
           marketSector: stock.marketSector ?? '',
           purpose: stock.purpose ?? '',

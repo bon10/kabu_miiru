@@ -5,6 +5,7 @@ import { getMarketFromCode } from '@/lib/utils'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpy } from '@/lib/currency'
 import { toNullableNumber } from '@/lib/dividend'
+import { dividendYieldOf, expectedAnnualDividendOf } from '@/lib/expected-dividend'
 
 export async function GET(
   request: NextRequest,
@@ -63,8 +64,8 @@ export async function GET(
       profitLossRate: Number(stock.profitLossRate),
       usdJpyRate,
       dividendPerShare: Number(stock.dividendPerShare),
-      dividendYield: Number(stock.dividendYield),
-      dividendAmount: Number(stock.dividendAmount),
+      dividendYield: dividendYieldOf(Number(stock.dividendPerShare), Number(stock.currentPrice)),
+      dividendAmount: expectedAnnualDividendOf(Number(stock.dividendPerShare), Number(stock.sharesHeld)),
       realizedProfitLoss: stock.realizedProfitLoss ? Number(stock.realizedProfitLoss) : null,
       targetPrice: stock.targetPrice ? Number(stock.targetPrice) : null,
       transactions: stock.transactions.map(t => ({
@@ -138,7 +139,6 @@ export async function PUT(
         market,
         code: body.code || existingStock.code,
         dividendPerShare: body.dividendPerShare !== undefined ? body.dividendPerShare : existingStock.dividendPerShare,
-        dividendYield: body.dividendYield !== undefined ? body.dividendYield : existingStock.dividendYield,
         targetPrice: body.targetPrice !== undefined ? body.targetPrice : existingStock.targetPrice,
         marketSector: body.marketSector !== undefined ? body.marketSector : existingStock.marketSector,
         purpose: body.purpose !== undefined ? body.purpose : existingStock.purpose
@@ -154,8 +154,8 @@ export async function PUT(
       profitLoss: Number(stock.profitLoss),
       profitLossRate: Number(stock.profitLossRate),
       dividendPerShare: Number(stock.dividendPerShare),
-      dividendYield: Number(stock.dividendYield),
-      dividendAmount: Number(stock.dividendAmount),
+      dividendYield: dividendYieldOf(Number(stock.dividendPerShare), Number(stock.currentPrice)),
+      dividendAmount: expectedAnnualDividendOf(Number(stock.dividendPerShare), Number(stock.sharesHeld)),
       realizedProfitLoss: stock.realizedProfitLoss ? Number(stock.realizedProfitLoss) : null,
       targetPrice: stock.targetPrice ? Number(stock.targetPrice) : null
     }))

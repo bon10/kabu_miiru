@@ -348,8 +348,8 @@ export default function ImportPage() {
                 <span>• 損益</span>
                 <span>• 損益率</span>
                 <span>• 1株配当金</span>
-                <span>• 配当利回り</span>
-                <span>• 配当金額</span>
+                <span>• 配当利回り（読み込まない）</span>
+                <span>• 配当金額（読み込まない）</span>
                 <span>• 購入日</span>
                 <span>• 売却日</span>
                 <span>• 実現損益</span>

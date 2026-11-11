@@ -45,14 +45,18 @@
 
 ## 配当計算ルール
 
-### BR-200: 年間配当金額（予想）の概念式
+### BR-200: 予想年間配当計算
 ```
-年間配当金額（予想） ≒ 1株配当金（予想 DPS） × 保有株数
+予想年間配当 = 1株配当金（予想 DPS） × 保有株数
 ```
 
-**対象**: 銘柄マスタの予想値（`Stock.dividendAmount`＝予想年間配当、`Stock.dividendPerShare`＝予想 DPS）。上式は両者の**概念的な関係**を示すもので、実際の受取額（BR-202）とは別物。
+**対象**: 銘柄マスタの予想値。`Stock.dividendPerShare` と `Stock.sharesHeld` から読み取りのたびに計算し、保存しない（ADR 0019）。実際の受取額（BR-202）とは別物。
 
-**実装の注意**: 現状アプリは `Stock.dividendAmount` と `Stock.dividendPerShare` を **TSV インポート列からそれぞれそのまま取り込む**（[import/tsv/route.ts](../../src/app/api/import/tsv/route.ts)）。`dividendPerShare × 保有株数` で `dividendAmount` を再計算する処理は持たないため、両者が上式どおり一致する保証はインポート元データに委ねられている。
+**適用条件**:
+- 1株配当金と同じ通貨建て（米国株はドル）。円換算は集計・表示時に行う（ADR 0005）
+- 小数第2位で丸める
+- 保有株数 0（売却済み）なら 0
+- 実装は [expectedAnnualDividendOf](../../src/lib/expected-dividend.ts)
 
 ### BR-202: 受取配当金額計算（実績）
 ```
@@ -80,7 +84,7 @@
 
 **適用条件**:
 - ADR 0015 より前に登録したレコードは `netAmount` を持たないため、**集計対象に税引前と手取りが混ざる**。既存データは移行しない
-- 予想年間配当（`Stock.dividendAmount`）は税引前のままなので、実績と並べる箇所ではラベルで基準を区別する
+- 予想年間配当（BR-200）は税引前のままなので、実績と並べる箇所ではラベルで基準を区別する
 - 実装は [netDividendAmount](../../src/lib/dividend.ts)
 
 ### BR-201: 配当利回り計算
@@ -91,6 +95,8 @@
 **適用条件**:
 - 現在価格 > 0の場合のみ
 - ゼロ除算回避: 現在価格 = 0の場合、配当利回り = 0
+- パーセントの値で扱う（2.74% なら 2.74）。表示では `formatPercentage(yield / 100)` とする
+- 保存せず、読み取りのたびに計算する（ADR 0019）。実装は [dividendYieldOf](../../src/lib/expected-dividend.ts)
 
 ## 株価取得ルール
 

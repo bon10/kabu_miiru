@@ -161,7 +161,7 @@ INDEX idx_price_stock_recorded (stock_id, recorded_at)
 -- 高精度な金額管理
 DECIMAL(15,2)  -- 金額（投資額、損益等）
 DECIMAL(15,4)  -- 価格（株価、取得単価等）
-DECIMAL(8,4)   -- 率（損益率、配当利回り等）
+DECIMAL(8,4)   -- 率（損益率等）
 ```
 
 ### 文字列サイズ

@@ -415,7 +415,7 @@ export default function StockDetailPage() {
                   配当利回り（予想）
                 </p>
                 <p className="text-2xl font-bold">
-                  {formatPercentage(stock.dividendYield)}
+                  {formatPercentage(stock.dividendYield / 100)}
                 </p>
               </div>
               <div>
