@@ -18,7 +18,7 @@ await client.connect(
 const { tools } = await client.listTools()
 assert.deepEqual(
   tools.map((t) => t.name).sort(),
-  ['portfolio_get_breakdown', 'portfolio_list_holdings'],
+  ['portfolio_get_breakdown', 'portfolio_list_holdings', 'stock_get_fundamentals'],
 )
 
 const breakdown = await client.callTool({
@@ -49,6 +49,21 @@ const invalid = await client.callTool({
   arguments: { sector: '自動車' },
 })
 assert.equal(invalid.isError, true, 'Yahoo の分類に無いセクターは拒否する')
+
+// 財務指標は Yahoo から取る。日本株と米国株を 1 つずつ確かめる
+const fundamentals = await client.callTool({
+  name: 'stock_get_fundamentals',
+  arguments: { codes: ['8058', 'JNJ'], response_format: 'json' },
+})
+assert.ok(!fundamentals.isError, `fundamentals failed: ${JSON.stringify(fundamentals.content)}`)
+const { items } = fundamentals.structuredContent as {
+  items: { code: string; price_currency?: string; roe_percent?: number | null; error?: string }[]
+}
+for (const item of items) {
+  assert.ok(!item.error, `${item.code} の取得に失敗: ${item.error}`)
+  assert.ok(typeof item.roe_percent === 'number', `${item.code} の ROE が取れる`)
+}
+assert.deepEqual(items.map((i) => i.price_currency), ['JPY', 'USD'])
 
 await client.close()
 console.error('Smoke test passed')

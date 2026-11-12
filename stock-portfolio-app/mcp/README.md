@@ -8,8 +8,11 @@
 | --- | --- |
 | `portfolio_get_breakdown` | セクター・市場・証券会社のどれかでまとめた評価額・比率・投資額・評価損益・損益率。セクターでまとめたときは、Yahoo の 11 分類のうち 1 銘柄も持っていないセクターも返す |
 | `portfolio_list_holdings` | 保有銘柄を 1 銘柄 1 行で。市場・セクターで絞り込み、評価額・損益・損益率で並べ替えられる |
+| `stock_get_fundamentals` | 銘柄コードを渡すと、ROE・FCF利回り・自己資本比率・有利子負債倍率・Altman Z と、現在値・年初来安値・52週安値・200日線を返す。保有していない銘柄も調べられる。DB ではなく Yahoo Finance から取り、保存はしない（ADR 0020） |
 
-どちらも `response_format` に `markdown`（既定）か `json` を指定できる。
+どれも `response_format` に `markdown`（既定）か `json` を指定できる。
+
+`stock_get_fundamentals` は、銘柄選びのスキル（value-stock-screener）が候補の指標を確かめるのに使う。計算は `src/lib/fundamentals.ts` で、アプリが保有銘柄の基準割れを判定するときと同じ関数を使う。
 
 ## 資産情報の守り方（ADR 0018）
 
