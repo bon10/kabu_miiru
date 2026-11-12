@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
 import { fetchMultipleStockPrices, getCurrentMarketSession, shouldUpdatePrice } from '@/lib/stock-price'
 import { updateSectorIfNeeded } from '@/lib/sector'
+import { createMissingSnapshots, refreshFundamentalIfStale } from '@/lib/fundamental-store'
 import { calculateProfitLoss } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
@@ -155,6 +156,9 @@ export async function POST(request: NextRequest) {
       }
 
       await updateSectorIfNeeded(stock)
+      // 基準チェック（ADR 0021）。どちらも失敗しても価格更新は失敗扱いにしない
+      await refreshFundamentalIfStale(stock)
+      await createMissingSnapshots(stock)
     }
 
     return Response.json(createSuccessResponse({

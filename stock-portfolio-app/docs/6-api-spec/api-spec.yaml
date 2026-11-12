@@ -54,6 +54,8 @@ tags:
     description: データインポート
   - name: batch
     description: バッチ（X-API-Key / Vercel Cron から実行）
+  - name: fundamental-checks
+    description: 基準チェック（保有銘柄が銘柄選びの基準を満たしているか。ADR 0021）
 
 paths:
   # 銘柄一覧管理
@@ -1403,6 +1405,163 @@ paths:
                           type: object
                       message:
                         type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /batch/fundamental-check-start:
+    post:
+      tags: [batch]
+      summary: 基準チェックの開始
+      description: >-
+        初回の apply の日をチェック開始日として保存し、保有中の銘柄（ETF を除く）に、
+        その日の値で購入時の指標を 1 件ずつ作る（ADR 0021）。2 回目以降はチェック開始日を変えず、
+        作れなかった銘柄だけを作り直すので再実行しても安全。既定は dry-run で DB を変更せず、
+        {"apply": true} を渡したときだけ書き込む。銘柄ごとに Yahoo へ問い合わせるため時間がかかる。
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply:
+                  type: boolean
+                  default: false
+                  description: true のときだけ実際に書き込む
+      responses:
+        '200':
+          description: 実行成功（dry-run を含む）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      checkStartDate:
+                        type: string
+                        description: チェック開始日（YYYY-MM-DD）。dry-run で未開始なら今日
+                      alreadyStarted:
+                        type: boolean
+                        description: 既にチェック開始日が保存されていたか
+                      targetCount:
+                        type: integer
+                        description: 購入時の指標を作る（作った）銘柄数
+                      createdCount:
+                        type: integer
+                      failed:
+                        type: array
+                        description: 作れなかった銘柄と理由（再実行で作り直す）
+                        items:
+                          type: object
+                      targets:
+                        type: array
+                        items:
+                          type: object
+                      message:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /fundamental-checks:
+    get:
+      tags: [fundamental-checks]
+      summary: 保有銘柄の基準チェック
+      description: >-
+        保有銘柄ごとに、ROE・FCF利回り・財務の安全性・200日線が固定の基準を満たしているかを返す（ADR 0021）。
+        判定（status）は broken（基準割れ）・unmet（購入時から未達）・ok・no_data（財務の値が未取得）・
+        not_applicable（ETF）。DB を読むだけで Yahoo には問い合わせない。
+      parameters:
+        - name: stockId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 指定するとその銘柄だけを返す
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stockId:
+                          type: integer
+                        stockName:
+                          type: string
+                        code:
+                          type: string
+                        market:
+                          type: string
+                        marketSector:
+                          type: string
+                          nullable: true
+                        lastPriceUpdate:
+                          type: string
+                          nullable: true
+                        fiscalPeriodEnd:
+                          type: string
+                          nullable: true
+                          description: 財務の値の基準期（YYYY-MM-DD）
+                        fundamentalFetchedAt:
+                          type: string
+                          nullable: true
+                        snapshot:
+                          type: object
+                          nullable: true
+                          description: 判定に使った購入時の指標（最新の 1 件）
+                          properties:
+                            recordedOn:
+                              type: string
+                            isCheckStart:
+                              type: boolean
+                              description: チェック開始日に一括で作ったもの（実際の購入時の値ではない）
+                        check:
+                          type: object
+                          properties:
+                            status:
+                              type: string
+                              enum: [ok, broken, unmet, no_data, not_applicable]
+                            items:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    enum: [roe, fcfYield, equityRatio, debtToEquity, altmanZ, trend]
+                                  label:
+                                    type: string
+                                  thresholdLabel:
+                                    type: string
+                                  current:
+                                    type: number
+                                    nullable: true
+                                    description: パーセントの値（altmanZ はそのまま、trend は 200日線から何 % 上か）
+                                  purchase:
+                                    type: number
+                                    nullable: true
+                                  status:
+                                    type: string
+                                    enum: [ok, broken, unmet_since_purchase, no_data]
+                            notes:
+                              type: array
+                              items:
+                                type: string
+                                enum: [negativeEquity, financialSector, realEstateSector]
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':

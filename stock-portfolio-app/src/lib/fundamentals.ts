@@ -212,11 +212,13 @@ export interface StockFundamentals {
   annual: AnnualFundamentals | null
   indicators: FundamentalIndicators | null
   priceStats: PriceStats
+  // 計算に使った日次終値（古い順・2 年ぶん）。保有銘柄なら DailyPrice に保存して再利用する
+  closes: DailyClose[]
 }
 
 // timeseries API は quoteSummary と違い crumb なしで返る（2026-11-12 に実測。
 // 非公式 API のため仕様の保証は無い）。period1 は基準期を含めて数期ぶんあれば足りる。
-async function fetchAnnualFundamentals(apiSymbol: string): Promise<AnnualFundamentals | null> {
+export async function fetchAnnualFundamentals(apiSymbol: string): Promise<AnnualFundamentals | null> {
   const period1 = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60
   const period2 = Math.floor(Date.now() / 1000)
   const url =
@@ -267,5 +269,6 @@ export async function fetchStockFundamentals(code: string): Promise<StockFundame
       ? computeFundamentalIndicators(annual, { price: latest.close, currency: history.currency })
       : null,
     priceStats: computePriceStats(history.closes),
+    closes: history.closes,
   }
 }

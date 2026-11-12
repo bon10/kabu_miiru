@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { CheckNote } from "@/lib/fundamental-check"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -55,6 +56,21 @@ export const AVG_ACQUISITION_PRICE_NOTE =
 // 実際の初回購入日はそれより前でありうる。
 export const INITIAL_BALANCE_BASELINE_NOTE =
   '移行時の初期残高の起点日です。実際にはこれより前から保有していた可能性があります。'
+
+// 基準チェック（ADR 0021）の注記。判定の近くに添える。銘柄詳細と MCP で同じ文言を使う。
+// 銀行・保険・不動産は、事業の性質で財務の安全性の基準を割りやすいことを伝える。
+export const FUNDAMENTAL_CHECK_NOTE_TEXT: Record<CheckNote, string> = {
+  negativeEquity:
+    '自己資本がマイナスです（自社株買いなどで起きます）。ROE と有利子負債倍率は計算できないため、基準を満たさないとみなします。',
+  financialSector:
+    '銀行・保険・証券は、預金や保険の準備金を負債として抱える事業のため、自己資本比率が低く出ます。財務の安全性の基準割れは、経営の悪化を意味しないことがあります。',
+  realEstateSector:
+    '不動産は物件を借入で買う事業のため、有利子負債が多く出ます。財務の安全性の基準割れは、経営の悪化を意味しないことがあります。',
+}
+
+// 購入時の指標をチェック開始日の一括作成で作った銘柄で、購入時の値の近くに添える説明文
+export const FUNDAMENTAL_CHECK_START_NOTE =
+  '基準チェックを始めた日の値です。実際に買ったときの値ではありません。'
 
 // 金額を指定通貨（JPY / USD）建てで表示する。配当のように受取通貨を明示的に
 // 持つ値を、その通貨のまま見せるのに使う（円換算はしない）。

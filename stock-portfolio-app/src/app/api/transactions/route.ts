@@ -5,6 +5,7 @@ import { toDateKey } from '@/lib/date-key'
 import { isUsStock, toJpy } from '@/lib/currency'
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/api-response'
+import { createMissingSnapshots } from '@/lib/fundamental-store'
 import {
   assertNoOrphanedSells,
   recalculateStockAggregates,
@@ -183,6 +184,12 @@ export async function POST(request: NextRequest) {
       assertNoOrphanedSells(await recalculateStockAggregates(body.stockId, tx))
       return created
     })
+
+    // 買いなら購入時の指標を作る（ADR 0021）。Yahoo から取れなくても登録は成功させ、
+    // 次の価格更新で作り直す
+    if (transaction.transactionType === 'BUY') {
+      await createMissingSnapshots(stock)
+    }
 
     return Response.json(
       createSuccessResponse({

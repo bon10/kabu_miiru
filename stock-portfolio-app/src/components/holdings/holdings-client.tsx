@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,6 +49,11 @@ import {
 import { UNSET_SECTOR } from '@/lib/holdings-filter'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
+import {
+  FundamentalBrokenBadge,
+  type FundamentalCheckRow,
+} from '@/components/stocks/fundamental-check-card'
+import type { CheckStatus } from '@/lib/fundamental-check'
 
 // 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
 //   - デフォルトは「保有」(sharesHeld > 0) のみ表示。
@@ -116,12 +121,17 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
+// 基準チェック（ADR 0021）の銘柄ごとの判定。銘柄名セルの「基準割れ」の印に使う。
+// 行のコンポーネントを何段も通して渡さないよう、コンテキストで配る
+const FundamentalStatusContext = createContext<Map<number, CheckStatus>>(new Map())
+
 const profitColor = (value: number) =>
   value >= 0 ? 'text-green-600' : 'text-red-600'
 
 // 銘柄名セル。フラット表示・証券会社別表示で共通。
 //   - 直近の価格更新が失敗した銘柄には「価格更新失敗」バッジを出し、
 //     マウスオーバーで priceUpdateError（失敗理由）を表示する。
+//   - 基準チェックで基準割れの銘柄には「基準割れ」の印を出す。詳しくは銘柄詳細で見る。
 //   - 行ごとに個別の価格更新ボタンを持ち、その銘柄だけ再取得できる。
 //     完了後は onUpdated で一覧全体を再取得してバッジ・価格を反映する。
 function StockNameCell({
@@ -132,6 +142,7 @@ function StockNameCell({
   onUpdated: () => void
 }) {
   const [isUpdating, setIsUpdating] = useState(false)
+  const fundamentalStatus = useContext(FundamentalStatusContext).get(holding.id)
 
   const handleUpdate = async () => {
     setIsUpdating(true)
@@ -163,6 +174,7 @@ function StockNameCell({
             価格更新失敗
           </Badge>
         )}
+        <FundamentalBrokenBadge status={fundamentalStatus} />
         <Button
           variant="ghost"
           size="sm"
@@ -435,6 +447,21 @@ export default function HoldingsClient() {
     { keepPreviousData: true }
   )
 
+  // 基準チェックは保有一覧とは別に取る（保有一覧の API と MCP が共用する loadHoldingRows を
+  // 重くしないため）。価格更新のあとは両方を取り直す
+  const { data: checks, mutate: mutateChecks } = useSWR<{ data: FundamentalCheckRow[] }>(
+    '/api/fundamental-checks',
+    fetcher
+  )
+  const fundamentalStatus = useMemo(
+    () => new Map((checks?.data ?? []).map((c) => [c.stockId, c.check.status])),
+    [checks]
+  )
+  const refresh = () => {
+    mutate()
+    mutateChecks()
+  }
+
   const grand = data?.data.grandTotal
   const filterOptions = data?.data.filterOptions
 
@@ -466,7 +493,7 @@ export default function HoldingsClient() {
     [brokers, effectiveSort]
   )
 
-  return (
+  const page = (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -634,7 +661,7 @@ export default function HoldingsClient() {
                     key={h.id}
                     holding={h}
                     brokerName={h.brokerName}
-                    onUpdated={mutate}
+                    onUpdated={refresh}
                   />
                 ))}
               </TableBody>
@@ -682,7 +709,7 @@ export default function HoldingsClient() {
                 />
                 <TableBody>
                   {broker.holdings.map((h) => (
-                    <HoldingTableRow key={h.id} holding={h} onUpdated={mutate} />
+                    <HoldingTableRow key={h.id} holding={h} onUpdated={refresh} />
                   ))}
                 </TableBody>
               </Table>
@@ -694,8 +721,15 @@ export default function HoldingsClient() {
       <NewStockDialog
         open={newStockOpen}
         onOpenChange={setNewStockOpen}
-        onSubmitted={() => mutate()}
+        onSubmitted={refresh}
       />
     </div>
+  )
+
+  // 銘柄名セル（StockNameCell）が基準チェックの判定を読めるよう、ページ全体を包む
+  return (
+    <FundamentalStatusContext.Provider value={fundamentalStatus}>
+      {page}
+    </FundamentalStatusContext.Provider>
   )
 }

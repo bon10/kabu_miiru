@@ -8,6 +8,7 @@
 | --- | --- |
 | `portfolio_get_breakdown` | セクター・市場・証券会社のどれかでまとめた評価額・比率・投資額・評価損益・損益率。セクターでまとめたときは、Yahoo の 11 分類のうち 1 銘柄も持っていないセクターも返す |
 | `portfolio_list_holdings` | 保有銘柄を 1 銘柄 1 行で。市場・セクターで絞り込み、評価額・損益・損益率で並べ替えられる |
+| `portfolio_check_fundamentals` | 保有銘柄が、銘柄選びのスキルと同じ基準（ROE・FCF利回り・財務の安全性・200日線）を今も満たしているか。銘柄ごとに「基準割れ」「購入時から未達」などの判定と、項目ごとの今の値・購入時の値を返す。判定で絞り込める。アプリの銘柄詳細「基準チェック」と同じ判定（ADR 0021） |
 | `stock_get_fundamentals` | 銘柄コードを渡すと、ROE・FCF利回り・自己資本比率・有利子負債倍率・Altman Z と、現在値・年初来安値・52週安値・200日線を返す。保有していない銘柄も調べられる。DB ではなく Yahoo Finance から取り、保存はしない（ADR 0020） |
 
 どれも `response_format` に `markdown`（既定）か `json` を指定できる。
@@ -18,7 +19,7 @@
 
 MCP はアプリのログインを通らず、本番 DB（TiDB）に直接つなぐ。外から MCP につなぐ入口は無く、MCP を起動した PC の中だけで動く。そのうえで、資産情報を読める範囲を次の 3 つで絞る。
 
-1. **DB は読み取り専用ユーザーで読む。** 銘柄・配当・為替レートの 3 テーブルに SELECT 権限だけを持つユーザーを使う。書き込みと、取引履歴など他のテーブルの読み取りは DB 側で拒否される。アプリの `DATABASE_URL`（読み書きできるユーザー）では起動しない
+1. **DB は読み取り専用ユーザーで読む。** 銘柄・配当・為替レート・財務の最新値・購入時の指標・日次終値の 6 テーブルに SELECT 権限だけを持つユーザーを使う。書き込みと、取引履歴など他のテーブルの読み取りは DB 側で拒否される。アプリの `DATABASE_URL`（読み書きできるユーザー）では起動しない
 2. **ツールは呼ぶたびに承認する。** Claude Code では `.claude/settings*.json` の `permissions.allow` に `mcp__kabu-miiru__*` を入れない。Claude Desktop では、承認を求められたときに常に許可する方を選ばない。関係ない会話で資産情報が読まれそうになったときに断れるようにするため
 3. **為替レートも保存しない。** 保存済みの最新レートを使う。当日分は毎朝の日次終値バッチか、アプリの画面を開いたときに保存される
 
@@ -38,7 +39,12 @@ CREATE USER 'xxxxx.kabu_mcp' IDENTIFIED BY 'パスワード';
 GRANT SELECT ON stock_portfolio.Stock TO 'xxxxx.kabu_mcp';
 GRANT SELECT ON stock_portfolio.DividendHistory TO 'xxxxx.kabu_mcp';
 GRANT SELECT ON stock_portfolio.ExchangeRate TO 'xxxxx.kabu_mcp';
+GRANT SELECT ON stock_portfolio.StockFundamental TO 'xxxxx.kabu_mcp';
+GRANT SELECT ON stock_portfolio.FundamentalSnapshot TO 'xxxxx.kabu_mcp';
+GRANT SELECT ON stock_portfolio.DailyPrice TO 'xxxxx.kabu_mcp';
 ```
+
+後の 3 行は基準チェック（`portfolio_check_fundamentals`。ADR 0021）のため。2026-11-12 より前にユーザーを作った場合は、この 3 行だけ追加で実行する。
 
 パスワードは `openssl rand -hex 24` などで作る（接続文字列に入れるので、`+` `/` `=` を含まない 16 進数が扱いやすい）。
 
