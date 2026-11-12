@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { CheckNote } from "@/lib/fundamental-check"
+import type { CheckItem, CheckNote } from "@/lib/fundamental-check"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -66,6 +66,20 @@ export const FUNDAMENTAL_CHECK_NOTE_TEXT: Record<CheckNote, string> = {
     '銀行・保険・証券は、預金や保険の準備金を負債として抱える事業のため、自己資本比率が低く出ます。財務の安全性の基準割れは、経営の悪化を意味しないことがあります。',
   realEstateSector:
     '不動産は物件を借入で買う事業のため、有利子負債が多く出ます。財務の安全性の基準割れは、経営の悪化を意味しないことがあります。',
+}
+
+// 基準チェック（ADR 0021）の項目ごとの説明。画面で数字のとなりに添える。
+// 利用者は投資の専門家ではないため、指標の名前だけでなく「その数字が何を見ているか」を出す。
+// 判定に使うしきい値は fundamental-check.ts が持つ。ここは意味の説明だけで、基準は書かない。
+export const FUNDAMENTAL_CRITERION_HINT: Record<CheckItem['key'], string> = {
+  roe: '集めたお金でどれだけ稼げているか。低いほど稼ぐ力が弱いという見方です。',
+  fcfYield:
+    '手元に残る現金が、株価に対してどれだけあるか。マイナスは現金が出ていっている状態です。',
+  equityRatio: '借金に頼らず自分のお金で事業をしているか。高いほど倒れにくいという見方です。',
+  debtToEquity:
+    '利息の付く借金が自分のお金より多くないか。100% を超えると借金のほうが多い状態です。',
+  altmanZ: '倒産しにくさの目安。低いほど危ないという見方です（米国株で使います）。',
+  trend: 'ここ 200 日の平均の株価より、今が上か下か。下なら下がり気味ということです。',
 }
 
 // 購入時の指標をチェック開始日の一括作成で作った銘柄で、購入時の値の近くに添える説明文

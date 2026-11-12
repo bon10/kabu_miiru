@@ -51,9 +51,12 @@ import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 import {
   FundamentalBrokenBadge,
+  FundamentalStatusIcon,
+  STATUS_LABEL,
   type FundamentalCheckRow,
 } from '@/components/stocks/fundamental-check-card'
 import type { CheckStatus } from '@/lib/fundamental-check'
+import { countCheckStatuses } from '@/lib/fundamental-check-summary'
 
 // 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
 //   - デフォルトは「保有」(sharesHeld > 0) のみ表示。
@@ -131,7 +134,9 @@ const profitColor = (value: number) =>
 // 銘柄名セル。フラット表示・証券会社別表示で共通。
 //   - 直近の価格更新が失敗した銘柄には「価格更新失敗」バッジを出し、
 //     マウスオーバーで priceUpdateError（失敗理由）を表示する。
-//   - 基準チェックで基準割れの銘柄には「基準割れ」の印を出す。詳しくは銘柄詳細で見る。
+//   - 基準チェックの印を出す。銘柄名の前に丸い印（満たしている＝青、見直し対象＝オレンジ）、
+//     見直し対象は名前のうしろに文字のバッジも出す。丸い印はツールチップで意味を出す。
+//     購入時から未達の銘柄には印を出さず、件数を要約バーで見せる。詳しくは銘柄詳細で見る。
 //   - 行ごとに個別の価格更新ボタンを持ち、その銘柄だけ再取得できる。
 //     完了後は onUpdated で一覧全体を再取得してバッジ・価格を反映する。
 function StockNameCell({
@@ -160,6 +165,8 @@ function StockNameCell({
     // 銘柄名だけは折り返してよいが、1〜2 文字ずつの縦長にならない幅を確保する
     <TableCell className="min-w-[12rem]">
       <div className="flex items-center gap-2">
+        {/* 基準チェックの印は銘柄名より前に置く。印が無い銘柄も同じ幅を空けるので名前の位置はずれない */}
+        <FundamentalStatusIcon status={fundamentalStatus} />
         <Link
           href={`/stocks/${holding.id}`}
           className="font-medium hover:underline"
@@ -457,6 +464,12 @@ export default function HoldingsClient() {
     () => new Map((checks?.data ?? []).map((c) => [c.stockId, c.check.status])),
     [checks]
   )
+  // 要約バーの件数。基準割れ以外は行に印を出さないため、ここでしか見えない（ADR 0021）
+  const fundamentalCounts = useMemo(
+    () => countCheckStatuses((checks?.data ?? []).map((c) => c.check)),
+    [checks]
+  )
+  const hasFundamentalChecks = (checks?.data.length ?? 0) > 0
   const refresh = () => {
     mutate()
     mutateChecks()
@@ -560,6 +573,38 @@ export default function HoldingsClient() {
           </Button>
         </div>
       </div>
+
+      {/* 基準チェックの要約（ADR 0021）。保有の 7 割が購入時から未達になりうるため、
+          行ごとの印は基準割れだけにして、件数はここにまとめる。内訳は基準チェック一覧で見る */}
+      {hasFundamentalChecks && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/40 px-5 py-3">
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-sm font-semibold text-amber-700">
+              {STATUS_LABEL.broken}
+            </span>
+            <span className="text-xl font-bold text-amber-700">
+              {fundamentalCounts.broken}
+            </span>
+            <span className="text-sm text-amber-700">件</span>
+          </span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-sm text-muted-foreground">{STATUS_LABEL.unmet}</span>
+            <span className="text-xl font-bold">{fundamentalCounts.unmet}</span>
+            <span className="text-sm text-muted-foreground">件</span>
+          </span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-sm text-green-700">{STATUS_LABEL.ok}</span>
+            <span className="text-xl font-bold text-green-700">{fundamentalCounts.ok}</span>
+            <span className="text-sm text-green-700">件</span>
+          </span>
+          <Link
+            href="/fundamental-checks"
+            className="ml-auto text-sm font-medium hover:underline"
+          >
+            基準チェックを見る
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>

@@ -51,7 +51,7 @@ Accepted (2026-11-12)
 
 ### 読み出し
 
-- 画面：`GET /api/fundamental-checks`（`stockId` で 1 銘柄）。銘柄詳細に「基準チェック」の欄、保有一覧に基準割れの銘柄だけ「基準割れ」の印を出す
+- 画面：`GET /api/fundamental-checks`（`stockId` で 1 銘柄）。銘柄詳細に「基準チェック」の欄、保有一覧に件数の要約バーと、基準割れ・すべて満たしているの銘柄に付く印、基準チェック一覧（`/fundamental-checks`）に判定ごとの件数と、基準に届いていない銘柄・すべて満たしている銘柄の一覧を出す。購入時から未達の銘柄に行ごとの印を出さない理由と、画面に出すラベル・文言は[基準チェックの画面要件](../1-requirements/fundamental-check.md)
 - MCP：`portfolio_check_fundamentals`。同じ `loadFundamentalChecks` を呼ぶ。DB を読むだけで Yahoo には問い合わせない。読み取り専用ユーザーに `StockFundamental`・`FundamentalSnapshot`・`DailyPrice` の SELECT 権限を足す（ADR 0018 の見直しトリガー「MCP が読むテーブルを増やすとき」）
 
 ## 決定していないこと
