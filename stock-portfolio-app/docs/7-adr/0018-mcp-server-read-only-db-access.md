@@ -61,3 +61,4 @@ MCP サーバーがデータを得る経路は 2 つ考えられる。アプリ�
 - [ADR 0014 セッション判定は middleware だけ](0014-session-check-in-middleware-only.md)
 - [ADR 0013 Vercel + TiDB へのデプロイ構成](0013-deploy-vercel-tidb.md)（本番 DB）
 - [ADR 0017 セクターは Yahoo Finance の分類](0017-sector-from-yahoo-classification.md)（MCP が分野別にまとめるときの分類）
+- [ADR 0020 銘柄の財務指標は Yahoo の通期決算から計算する](0020-fundamentals-from-yahoo-timeseries.md)（MCP が DB 以外に Yahoo を読むツール。DB の権限は本 ADR のまま）

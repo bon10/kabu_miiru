@@ -225,6 +225,24 @@ GET https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=a
 
 > **確認方法と限界**：2026-11-09 に、7203.T・AAPL・VOO・1306.T などで上記リクエストを実行して確認した。11 分類は `https://finance.yahoo.com/sectors/` の一覧で確認した。chart エンドポイントと同じく非公式であり、予告なく変わりうる。
 
+#### 財務の値の取得
+
+ROE・FCF利回り・自己資本比率・有利子負債倍率・Altman Z の元になる通期の財務の値は、fundamentals-timeseries エンドポイントから取得する（[fundamentals.ts](../src/lib/fundamentals.ts)、[ADR 0020](7-adr/0020-fundamentals-from-yahoo-timeseries.md)）。今のところ呼び出し元は MCP サーバーの `stock_get_fundamentals` だけ。
+
+```
+GET https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{symbol}?type={types}&period1={UNIX 秒}&period2={UNIX 秒}
+```
+
+- **crumb は不要**：quoteSummary と違い、Cookie と crumb を付けなくても返る
+- **type**：カンマ区切りで複数指定する。使っているのは `annualStockholdersEquity` `annualTotalAssets` `annualTotalLiabilitiesNetMinorityInterest` `annualTotalDebt` `annualWorkingCapital` `annualRetainedEarnings` `annualEBIT` `annualTotalRevenue` `annualNetIncomeCommonStockholders` `annualFreeCashFlow` `annualOrdinarySharesNumber`
+- **レスポンス**：`timeseries.result` に type ごとの要素が並び、`result[i][type]` が決算期ごとの配列になる。各要素は `asOfDate`（決算期末日）・`currencyCode`（財務の通貨）・`reportedValue.raw`。欠けた期は `null` が入る
+- **欠け**：項目ごとに最新期がずれることがある（JNJ の `annualRetainedEarnings` は最新が 2023-12-31、ほかは 2025-12-31）
+- **通貨**：財務の通貨で返る。ADR は株価と通貨が違う（TSM は TWD）
+
+株価の安値と200日線は、同じ chart エンドポイントの `range=2y&interval=1d` の終値から計算する。
+
+> **確認方法と限界**：2026-11-12 に、8058.T・7203.T・JNJ・MCD・TSM で上記リクエストを実行して確認した。同じ値の一部は quoteSummary（`modules=financialData,defaultKeyStatistics`、crumb 必要）にもあるが、ROE は直近12か月でフリーCF も定義が違い、期を返さないため使っていない。`balanceSheetHistoryQuarterly` モジュールは `endDate` 以外の項目を返さなかった。非公式であり、予告なく変わりうる。
+
 ## USD/JPY 為替レート
 
 米国株はドル建てで取得・保存されるため、円換算用に USD/JPY レートを取得します（ADR 0005）。株価と同じ Yahoo Finance のチャートエンドポイントを、為替シンボル `USDJPY=X` に対して呼び出します。

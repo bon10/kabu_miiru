@@ -3,6 +3,8 @@
 // アプリの本番 DB（TiDB）に Prisma で直接つなぐ。接続には読み取り専用の DB
 // ユーザー（MCP_DATABASE_URL）を使い、書き込みは DB 側で拒否される（ADR 0018）。
 // USD/JPY レートも Yahoo から取り直して保存はせず、保存済みの最新値を使う。
+// 銘柄の財務指標（stock_get_fundamentals）だけは、銘柄選びのスキルとアプリの値を
+// 揃えるため、アプリと同じコードで Yahoo から取る。取った値は保存しない（ADR 0020）。
 //
 // 評価額・損益の計算はアプリの保有一覧と同じ loadHoldingRows を使う。
 // 現在価格・評価損益・評価損益率は、最後に価格更新した時点の保存値である
@@ -12,6 +14,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import * as z from 'zod/v4'
 import { getLatestStoredUsdJpyRate } from '@/lib/exchange-rate'
 import { formatDateKey } from '@/lib/date-key'
+import { fetchStockFundamentals, type StockFundamentals } from '@/lib/fundamentals'
 import { loadHoldingRows, type HoldingRow } from '@/lib/holdings'
 import { UNSET_SECTOR, matchesHoldingFilter } from '@/lib/holdings-filter'
 import {
@@ -296,7 +299,117 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
     },
   )
 
+  server.registerTool(
+    'stock_get_fundamentals',
+    {
+      title: '銘柄の財務指標と株価の安値・200日線',
+      description: `銘柄コードを渡すと、Yahoo Finance から財務の値と株価の履歴を取り、次を返す。保有していない銘柄も調べられる。
+  - 現在値（最新の終値）、年初来安値・52週安値（終値ベース）と、そこから何 % 上にいるか、200日線
+  - ROE、FCF利回り、自己資本比率、有利子負債倍率（D/E）、Altman Z（元の式）
+
+財務の値は直近の通期決算（基準期）のもの。項目ごとに最新期がずれていても、基準期以外の値は混ぜない（欠けた項目を使う指標は null）。
+時価総額は 現在値 × 基準期末の株式数。財務と株価の通貨が違う銘柄（ADR など）は、時価総額を使う FCF利回りと Altman Z を返さない。
+アプリが保有銘柄の基準割れを判定するときと同じ計算を使う。
+
+使い方の例:
+  - 銘柄選びで候補の指標を確かめる -> codes=["8058", "JNJ"]
+日本株は数字のコード（"7203"）、米国株はティッカー（"AAPL"）で渡す。`,
+      inputSchema: z.strictObject({
+        codes: z
+          .array(z.string().regex(/^[0-9A-Za-z.\-]{1,10}$/))
+          .min(1)
+          .max(20)
+          .describe('銘柄コード。日本株は数字（"7203"）、米国株はティッカー（"AAPL"）'),
+        response_format: ResponseFormat,
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ codes, response_format }) => {
+      // Yahoo のレート制限を避けるため、価格更新と同じく 1 銘柄ずつ直列で取る
+      const items = []
+      for (const code of codes) {
+        try {
+          items.push(toFundamentalsItem(await fetchStockFundamentals(code.toUpperCase())))
+        } catch (error) {
+          items.push({ code, error: error instanceof Error ? error.message : String(error) })
+        }
+      }
+
+      if (response_format === 'json') {
+        const data = { items }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        }
+      }
+
+      const fmt = (value: number | null, digits = 1) => (value === null ? '-' : value.toFixed(digits))
+      const pct = (value: number | null) => (value === null ? '-' : `${value.toFixed(1)}%`)
+      const lines = [
+        '# 財務指標と株価',
+        '',
+        '| コード | 現在値（日付） | 年初来安値（+%） | 52週安値（+%） | 200日線 | ROE | FCF利回り | 自己資本比率 | 有利子負債倍率 | Altman Z | 基準期 |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+      ]
+      const notes: string[] = []
+      for (const item of items) {
+        if ('error' in item) {
+          lines.push(`| ${item.code} | 取得失敗：${item.error} | | | | | | | | | |`)
+          continue
+        }
+        const money = (value: number | null) => (value === null ? '-' : formatMoneyIn(value, item.price_currency))
+        lines.push(
+          `| ${item.code} | ${money(item.price)}（${item.price_date}） | ${money(item.year_to_date_low)}（+${fmt(item.above_year_to_date_low_percent)}%） | ${money(item.low_52_week)}（+${fmt(item.above_low_52_week_percent)}%） | ${money(item.moving_average_200)} | ${pct(item.roe_percent)} | ${pct(item.fcf_yield_percent)} | ${pct(item.equity_ratio_percent)} | ${pct(item.debt_to_equity_percent)} | ${fmt(item.altman_z, 2)} | ${item.fiscal_period_end ?? '-'} |`,
+        )
+        if (!item.fiscal_period_end) notes.push(`${item.code}: 財務の値が取れなかった`)
+        if (item.negative_equity) notes.push(`${item.code}: 自己資本がマイナス（ROE と有利子負債倍率は計算しない）`)
+        if (item.financial_currency && item.financial_currency !== item.price_currency) {
+          notes.push(`${item.code}: 財務（${item.financial_currency}）と株価（${item.price_currency}）の通貨が違うため、FCF利回りと Altman Z は計算しない`)
+        }
+      }
+      if (notes.length > 0) lines.push('', '## 注意', ...notes.map((n) => `- ${n}`))
+      lines.push('', '出典: Yahoo Finance（非公式 API）。安値は終値ベースで、場中の安値は含まない。')
+      return { content: [{ type: 'text', text: lines.join('\n') }] }
+    },
+  )
+
   return server
+}
+
+function formatMoneyIn(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
+  } catch {
+    return value.toFixed(2) // 通貨コードが取れなかったとき
+  }
+}
+
+// 安値から何 % 上にいるか（安値ちょうどなら 0）
+const aboveLowPercent = (price: number, low: number | null) =>
+  low === null || low <= 0 ? null : (price / low - 1) * 100
+
+function toFundamentalsItem(f: StockFundamentals) {
+  const { priceStats: s, annual: a, indicators: i } = f
+  return {
+    code: f.code,
+    price: f.price,
+    price_currency: f.priceCurrency,
+    price_date: formatDateKey(f.priceDate),
+    year_to_date_low: s.yearToDateLow,
+    above_year_to_date_low_percent: aboveLowPercent(f.price, s.yearToDateLow),
+    low_52_week: s.low52Week,
+    above_low_52_week_percent: aboveLowPercent(f.price, s.low52Week),
+    moving_average_200: s.movingAverage200,
+    fiscal_period_end: a?.fiscalPeriodEnd ?? null,
+    financial_currency: a?.currency ?? null,
+    roe_percent: i?.roe ?? null,
+    fcf_yield_percent: i?.fcfYield ?? null,
+    equity_ratio_percent: i?.equityRatio ?? null,
+    debt_to_equity_percent: i?.debtToEquity ?? null,
+    altman_z: i?.altmanZ ?? null,
+    market_cap: i?.marketCap ?? null,
+    negative_equity: i?.negativeEquity ?? false,
+  }
 }
 
 serveStdio(createServer)
