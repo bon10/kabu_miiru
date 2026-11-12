@@ -14,6 +14,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import * as z from 'zod/v4'
 import { getLatestStoredUsdJpyRate } from '@/lib/exchange-rate'
 import { formatDateKey } from '@/lib/date-key'
+import { loadFundamentalChecks, type FundamentalCheckRow } from '@/lib/fundamental-store'
 import { fetchStockFundamentals, type StockFundamentals } from '@/lib/fundamentals'
 import { loadHoldingRows, type HoldingRow } from '@/lib/holdings'
 import { UNSET_SECTOR, matchesHoldingFilter } from '@/lib/holdings-filter'
@@ -24,7 +25,13 @@ import {
   type BreakdownGroup,
 } from '@/lib/portfolio-breakdown'
 import { ETF_SECTOR, YAHOO_SECTORS } from '@/lib/sector'
-import { formatCurrency, formatPercentage, formatPrice } from '@/lib/utils'
+import {
+  FUNDAMENTAL_CHECK_START_NOTE,
+  FUNDAMENTAL_CHECK_NOTE_TEXT,
+  formatCurrency,
+  formatPercentage,
+  formatPrice,
+} from '@/lib/utils'
 
 const CHARACTER_LIMIT = 25_000
 
@@ -57,7 +64,7 @@ async function loadRows(): Promise<{
 }
 
 // 価格の鮮度。保存値なので、古ければ価格更新を促す
-function priceFreshness(rows: HoldingRow[]): string {
+function priceFreshness(rows: { lastPriceUpdate: Date | null }[]): string {
   const times = rows
     .map((r) => r.lastPriceUpdate?.getTime())
     .filter((t): t is number => t !== undefined)
@@ -369,6 +376,129 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
       }
       if (notes.length > 0) lines.push('', '## 注意', ...notes.map((n) => `- ${n}`))
       lines.push('', '出典: Yahoo Finance（非公式 API）。安値は終値ベースで、場中の安値は含まない。')
+      return { content: [{ type: 'text', text: lines.join('\n') }] }
+    },
+  )
+
+  server.registerTool(
+    'portfolio_check_fundamentals',
+    {
+      title: '保有銘柄の基準チェック',
+      description: `保有銘柄が、銘柄選びのスキル（value-stock-screener）と同じ基準を今も満たしているかを返す。アプリの銘柄詳細「基準チェック」と同じ判定。
+基準は固定：ROE 8%以上、FCF利回り 3%以上、財務の安全性（国内株は自己資本比率 40%以上かつ有利子負債倍率 100%以下、米国株は Altman Z 1.8以上）、現在値が200日線より上。
+
+銘柄ごとの判定（status）:
+  - broken：買ったときは満たしていた基準を、今は下回っている項目がある（基準割れ。売りを検討するサイン）
+  - unmet：買ったときから基準に届いていない項目がある（買ったあとに悪くなったものは無い）
+  - ok：すべて満たしている
+  - no_data：財務の値がまだ無い（アプリで価格更新をすると取得する）
+  - not_applicable：ETF（対象外）
+項目ごとに、今の値・購入時の値・判定を返す。比率はパーセントの値、200日線は「200日線から何 % 上か」。
+
+今の値は、最後に価格更新した時点の株価と、保存済みの財務の値（直近の通期決算）から計算する。DB を読むだけで Yahoo には問い合わせない。
+売買を勧めるものではない。基準割れの銘柄をまとめるときも、判断材料として伝える。
+
+使い方の例:
+  - 「基準割れの銘柄をまとめて」 -> status="broken"
+  - 「基準チェックの結果を全部見せて」 -> status 省略`,
+      inputSchema: z.strictObject({
+        status: z
+          .enum(['broken', 'unmet', 'ok', 'no_data', 'not_applicable'])
+          .optional()
+          .describe('この判定の銘柄だけ返す。省略すると全銘柄'),
+        response_format: ResponseFormat,
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ status, response_format }) => {
+      let rows: FundamentalCheckRow[]
+      try {
+        rows = await loadFundamentalChecks()
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `基準チェックを DB から読めませんでした（${reason}）。読み取り専用ユーザーに StockFundamental・FundamentalSnapshot・DailyPrice の SELECT 権限があるかを確認してください（mcp/README.md）。`,
+        )
+      }
+      const counts = Object.fromEntries(
+        (['broken', 'unmet', 'ok', 'no_data', 'not_applicable'] as const).map((s) => [
+          s,
+          rows.filter((r) => r.check.status === s).length,
+        ]),
+      )
+      const matched = status ? rows.filter((r) => r.check.status === status) : rows
+
+      const toItem = (r: FundamentalCheckRow) => ({
+        stock_name: r.stockName,
+        code: r.code,
+        market: r.market,
+        sector: r.marketSector,
+        status: r.check.status,
+        items: r.check.items.map((i) => ({
+          key: i.key,
+          label: i.label,
+          threshold: i.thresholdLabel,
+          current: i.current,
+          purchase: i.purchase,
+          status: i.status,
+        })),
+        notes: r.check.notes.map((n) => FUNDAMENTAL_CHECK_NOTE_TEXT[n]),
+        purchase_values_recorded_on: r.snapshot ? formatDateKey(r.snapshot.recordedOn) : null,
+        purchase_values_are_check_start: r.snapshot?.isCheckStart ?? false,
+        fiscal_period_end: r.fiscalPeriodEnd ? formatDateKey(r.fiscalPeriodEnd) : null,
+        last_price_update: r.lastPriceUpdate?.toISOString() ?? null,
+      })
+
+      if (response_format === 'json') {
+        const data = { counts, stocks: matched.map(toItem) }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        }
+      }
+
+      const STATUS_LABEL = {
+        broken: '基準割れ',
+        unmet: '購入時から未達',
+        ok: '満たしている',
+        no_data: 'データなし',
+        not_applicable: '対象外（ETF）',
+      } as const
+      const ITEM_LABEL = {
+        ok: '○',
+        broken: '基準割れ',
+        unmet_since_purchase: '購入時から未達',
+        no_data: 'データなし',
+      } as const
+      const fmt = (key: string, v: number | null) =>
+        v === null ? '-' : key === 'altmanZ' ? v.toFixed(2) : `${key === 'trend' && v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+
+      const lines = [
+        '# 保有銘柄の基準チェック',
+        '',
+        `基準割れ ${counts.broken} / 購入時から未達 ${counts.unmet} / 満たしている ${counts.ok} / データなし ${counts.no_data} / 対象外 ${counts.not_applicable}`,
+      ]
+      if (matched.length === 0) lines.push('', '条件に合う銘柄はありません。')
+      for (const r of matched) {
+        lines.push('', `## ${r.stockName}（${r.code}・${r.market}・${r.marketSector ?? 'セクター未設定'}）：${STATUS_LABEL[r.check.status]}`)
+        if (r.check.items.length > 0) {
+          lines.push('| 項目 | 基準 | 今 | 購入時 | 判定 |', '| --- | --- | ---: | ---: | --- |')
+          for (const i of r.check.items) {
+            lines.push(`| ${i.label} | ${i.thresholdLabel} | ${fmt(i.key, i.current)} | ${fmt(i.key, i.purchase)} | ${ITEM_LABEL[i.status]} |`)
+          }
+        }
+        if (r.snapshot) {
+          lines.push(
+            `購入時の値：${formatDateKey(r.snapshot.recordedOn)} 時点${r.snapshot.isCheckStart ? `（${FUNDAMENTAL_CHECK_START_NOTE}）` : ''}`,
+          )
+        }
+        for (const n of r.check.notes) lines.push(`注：${FUNDAMENTAL_CHECK_NOTE_TEXT[n]}`)
+      }
+      lines.push(
+        '',
+        '今の値は最後に価格更新した時点の株価と、直近の通期決算から計算している。売買を勧めるものではない。',
+        priceFreshness(matched),
+      )
       return { content: [{ type: 'text', text: lines.join('\n') }] }
     },
   )

@@ -227,7 +227,7 @@ GET https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=a
 
 #### 財務の値の取得
 
-ROE・FCF利回り・自己資本比率・有利子負債倍率・Altman Z の元になる通期の財務の値は、fundamentals-timeseries エンドポイントから取得する（[fundamentals.ts](../src/lib/fundamentals.ts)、[ADR 0020](7-adr/0020-fundamentals-from-yahoo-timeseries.md)）。今のところ呼び出し元は MCP サーバーの `stock_get_fundamentals` だけ。
+ROE・FCF利回り・自己資本比率・有利子負債倍率・Altman Z の元になる通期の財務の値は、fundamentals-timeseries エンドポイントから取得する（[fundamentals.ts](../src/lib/fundamentals.ts)、[ADR 0020](7-adr/0020-fundamentals-from-yahoo-timeseries.md)）。呼び出し元は MCP サーバーの `stock_get_fundamentals` と、基準チェック（[ADR 0021](7-adr/0021-fundamental-check-for-holdings.md)）の財務の最新値の取り直し（価格更新のついで）・購入時の指標の作成。
 
 ```
 GET https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{symbol}?type={types}&period1={UNIX 秒}&period2={UNIX 秒}

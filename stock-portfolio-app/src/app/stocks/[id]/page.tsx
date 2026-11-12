@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
 import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
+import { FundamentalCheckCard } from '@/components/stocks/fundamental-check-card'
 import {
   Table,
   TableBody,
@@ -428,6 +429,14 @@ export default function StockDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 基準チェック（ADR 0021）。価格更新・取引の追加で値が変わるので、そのたびに取り直す */}
+      {stock.sharesHeld > 0 && (
+        <FundamentalCheckCard
+          stockId={stock.id}
+          version={`${stock.lastPriceUpdate}-${stock.transactions.length}`}
+        />
+      )}
 
       {/* 詳細情報 */}
       <Card>

@@ -18,7 +18,7 @@ await client.connect(
 const { tools } = await client.listTools()
 assert.deepEqual(
   tools.map((t) => t.name).sort(),
-  ['portfolio_get_breakdown', 'portfolio_list_holdings', 'stock_get_fundamentals'],
+  ['portfolio_check_fundamentals', 'portfolio_get_breakdown', 'portfolio_list_holdings', 'stock_get_fundamentals'],
 )
 
 const breakdown = await client.callTool({
@@ -64,6 +64,15 @@ for (const item of items) {
   assert.ok(typeof item.roe_percent === 'number', `${item.code} の ROE が取れる`)
 }
 assert.deepEqual(items.map((i) => i.price_currency), ['JPY', 'USD'])
+
+// 基準チェックは DB を読むだけ。読み取り専用ユーザーに新しいテーブルの権限が要る（README）
+const checks = await client.callTool({
+  name: 'portfolio_check_fundamentals',
+  arguments: { response_format: 'json' },
+})
+assert.ok(!checks.isError, `check failed: ${JSON.stringify(checks.content)}`)
+const { counts } = checks.structuredContent as { counts: Record<string, number> }
+assert.ok(typeof counts.broken === 'number', '判定ごとの件数を返す')
 
 await client.close()
 console.error('Smoke test passed')

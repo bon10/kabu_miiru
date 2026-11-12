@@ -62,6 +62,63 @@ model Stock {
   dividendHistory       DividendHistory[]
   priceHistory          PriceHistory[]
   dailyPrices           DailyPrice[]
+  fundamental           StockFundamental?
+  fundamentalSnapshots  FundamentalSnapshot[]
+}
+
+// 財務の最新値（ADR 0021）。銘柄ごとに 1 行で、取り直したら上書きする。
+// Yahoo の通期決算の値をそのまま持ち（ADR 0020）、ROE・FCF利回りなどの指標は
+// 保存しない。FCF利回りと Altman Z は株価で毎日変わるため、判定のたびに現在価格から計算する。
+// 項目は基準期（fiscalPeriodEnd）の値で、その期の値が無い項目は NULL。
+model StockFundamental {
+  id                Int      @id @default(autoincrement())
+  stockId           Int      @unique
+  fiscalPeriodEnd   DateTime @db.Date // 基準期（決算期末日）
+  currency          String   // 財務の通貨（JPY / USD / TWD など）。株価の通貨と違えば時価総額を計算しない
+  equity            Decimal? @db.Decimal(24,2) // 自己資本
+  totalAssets       Decimal? @db.Decimal(24,2) // 総資産
+  totalLiabilities  Decimal? @db.Decimal(24,2) // 負債合計
+  totalDebt         Decimal? @db.Decimal(24,2) // 有利子負債
+  workingCapital    Decimal? @db.Decimal(24,2) // 運転資本
+  retainedEarnings  Decimal? @db.Decimal(24,2) // 利益剰余金
+  ebit              Decimal? @db.Decimal(24,2) // EBIT
+  revenue           Decimal? @db.Decimal(24,2) // 売上高
+  netIncome         Decimal? @db.Decimal(24,2) // 純利益
+  freeCashFlow      Decimal? @db.Decimal(24,2) // フリーCF
+  sharesOutstanding Decimal? @db.Decimal(24,2) // 株式数（自己株式を除く）
+  fetchedAt         DateTime // Yahoo から取得した日時。古くなったら価格更新のときに取り直す
+  source            String   // 取得元（yahoo）
+
+  stock             Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+}
+
+// 購入時の指標（ADR 0021）。買いの取引ごとに、その時点の指標を残し、あとから変えない。
+// 基準チェックで「買ったあとに基準を割った」と「買ったときから届いていない」を見分けるのに使う。
+// FCF利回りなどは株価で変わり後から計算し直せないため、財務の値ではなく計算済みの指標を持つ。
+//
+// チェック開始日（基準チェックを始めた日）より前の保有には、チェック開始日に銘柄ごとに 1 件だけ作る
+// （isCheckStart = true、transactionId は NULL）。値はチェック開始日のもので、実際の購入時のものではない。
+model FundamentalSnapshot {
+  id               Int       @id @default(autoincrement())
+  stockId          Int
+  transactionId    Int?      @unique // 元になった買いの取引。チェック開始日の一括作成では NULL
+  recordedOn       DateTime  @db.Date // 何の日の値か（取引日、またはチェック開始日）。暦日（ADR 0012）
+  isCheckStart       Boolean   @default(false)
+  price            Decimal   @db.Decimal(15,4) // 計算に使った株価（取引の単価、またはチェック開始日の終値）。建値通貨
+  fiscalPeriodEnd  DateTime? @db.Date // 計算に使った財務の基準期
+  roe              Decimal?  @db.Decimal(12,4) // 以下の比率はパーセントの値（12% なら 12）
+  fcfYield         Decimal?  @db.Decimal(12,4)
+  equityRatio      Decimal?  @db.Decimal(12,4)
+  debtToEquity     Decimal?  @db.Decimal(12,4)
+  altmanZ          Decimal?  @db.Decimal(12,4)
+  movingAverage200 Decimal?  @db.Decimal(15,4) // 200日線（建値通貨）
+  negativeEquity   Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+
+  stock            Stock        @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  transaction      Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, recordedOn])
 }
 
 // 為替レート（日次キャッシュ）
@@ -134,6 +191,7 @@ model Transaction {
   createdAt       DateTime        @default(now())
 
   stock           Stock           @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  fundamentalSnapshot FundamentalSnapshot?
 
   @@index([stockId, transactionDate])
 }

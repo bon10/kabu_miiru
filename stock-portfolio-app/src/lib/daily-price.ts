@@ -134,7 +134,6 @@ export interface BackfillStockResult {
 }
 
 // 1 銘柄ぶんの日次終値を取得して保存する。
-// 既存レコードは上書きせずスキップする（実測値を後から取り直して壊さないため）。
 // 価格は建値通貨のまま保存する。円換算は読み取り時に行う（ADR 0005 / 0008）。
 async function backfillStock(
   stock: { id: number; code: string },
@@ -152,28 +151,40 @@ async function backfillStock(
     }
   }
 
+  return {
+    stockId: stock.id,
+    code: stock.code,
+    success: true,
+    savedCount: await saveDailyCloses(stock.id, fetched.closes),
+  }
+}
+
+// 取得済みの日次終値（古い順）を保存し、保存した件数を返す。
+// 既存レコードは上書きせずスキップする（実測値を後から取り直して壊さないため）。
+// 基準チェック（fundamental-store.ts）が 200日線のために取った 2 年ぶんも、これで保存する。
+export async function saveDailyCloses(stockId: number, closes: DailyClose[]): Promise<number> {
+  if (closes.length === 0) return 0
+
   const existing = await prisma.dailyPrice.findMany({
     where: {
-      stockId: stock.id,
-      priceDate: { gte: fetched.closes[0].priceDate },
+      stockId,
+      priceDate: { gte: closes[0].priceDate },
     },
     select: { priceDate: true },
   })
   const existingKeys = new Set(existing.map((e) => toDateKey(e.priceDate).getTime()))
 
-  const toCreate = fetched.closes
+  const toCreate = closes
     .filter((c) => !existingKeys.has(c.priceDate.getTime()))
     .map((c) => ({
-      stockId: stock.id,
+      stockId,
       close: c.close,
       priceDate: c.priceDate,
       source: 'yahoo',
       isFilled: false,
     }))
 
-  if (toCreate.length === 0) {
-    return { stockId: stock.id, code: stock.code, success: true, savedCount: 0 }
-  }
+  if (toCreate.length === 0) return 0
 
   // 同時実行で同じ日を作りにいったときはユニーク制約で弾かれる。既存値を正とし、
   // 取りこぼしは次回の実行で埋まるため skipDuplicates で黙認する。
@@ -181,13 +192,7 @@ async function backfillStock(
     data: toCreate,
     skipDuplicates: true,
   })
-
-  return {
-    stockId: stock.id,
-    code: stock.code,
-    success: true,
-    savedCount: created.count,
-  }
+  return created.count
 }
 
 export interface BackfillSummary {

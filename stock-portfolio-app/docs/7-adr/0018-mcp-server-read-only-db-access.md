@@ -23,6 +23,8 @@ MCP サーバーがデータを得る経路は 2 つ考えられる。アプリ�
 
 **MCP サーバーは所有者の PC で stdio で動かし、銘柄・配当・為替レートの 3 テーブルに SELECT 権限だけを持つ DB ユーザーで、本番 DB を直接読む。**
 
+> 追記（2026-11-12）：基準チェック（ADR 0021）のため、財務の最新値（`StockFundamental`）・購入時の指標（`FundamentalSnapshot`）・日次終値（`DailyPrice`）の 3 テーブルにも SELECT 権限を足した。読むのは保有銘柄の財務の値と終値で、取引履歴は引き続き読まない。
+
 - 接続文字列は `stock-portfolio-app/.env` の `MCP_DATABASE_URL` に置く。起動口（`mcp/src/main.ts`）がこれを `DATABASE_URL` に入れてから Prisma を読み込む
 - `MCP_DATABASE_URL` が無いときは起動しない。`DATABASE_URL` に黙って戻ると、読み書きできるユーザーで動いてしまうため
 - USD/JPY レートは Yahoo から取り直さず、保存済みの最新値を使う（`getLatestStoredUsdJpyRate`）。アプリの `getCurrentUsdJpyRate` は当日分が無いと DB に保存しようとするが、読み取り専用ユーザーでは保存できないため
@@ -62,3 +64,4 @@ MCP サーバーがデータを得る経路は 2 つ考えられる。アプリ�
 - [ADR 0013 Vercel + TiDB へのデプロイ構成](0013-deploy-vercel-tidb.md)（本番 DB）
 - [ADR 0017 セクターは Yahoo Finance の分類](0017-sector-from-yahoo-classification.md)（MCP が分野別にまとめるときの分類）
 - [ADR 0020 銘柄の財務指標は Yahoo の通期決算から計算する](0020-fundamentals-from-yahoo-timeseries.md)（MCP が DB 以外に Yahoo を読むツール。DB の権限は本 ADR のまま）
+- [ADR 0021 保有銘柄の基準チェック](0021-fundamental-check-for-holdings.md)（MCP が読むテーブルを 3 つ足した）
