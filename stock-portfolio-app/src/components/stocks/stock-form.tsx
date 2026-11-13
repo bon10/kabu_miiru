@@ -87,7 +87,8 @@ export default function StockForm({
         market: formData.market,
         dividendPerShare: Number(formData.dividendPerShare),
         targetPrice: formData.targetPrice ? Number(formData.targetPrice) : null,
-        marketSector: formData.marketSector || null,
+        // セクターは価格更新で Yahoo から自動で入れるため送らない（ADR 0017）。
+        // 送らなければ API は保存済みの値を残す
         purpose: formData.purpose || null,
       }
 
@@ -266,10 +267,14 @@ export default function StockForm({
                 <input
                   type="text"
                   value={formData.marketSector}
-                  onChange={(e) => handleChange('marketSector', e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                  placeholder="例: 自動車"
+                  className="w-full p-2 border rounded-md bg-gray-50"
+                  placeholder="未取得"
+                  disabled
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  価格更新のときに Yahoo Finance から自動で取得します。保有株数が 0
+                  の銘柄は取得しません。
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">

@@ -24,6 +24,7 @@ import { getMarketFromCode } from '@/lib/utils'
 // 新規銘柄マスタの登録ダイアログ。
 // 保有株数・投資額などは Transaction 経由で発生する派生値のため、
 // マスタ登録時には扱わない（ADR 0003）。
+// セクターは価格更新のときに Yahoo から自動で入るため、入力欄を置かない（ADR 0017）。
 // ユビキタス言語: docs/2-domain/ubiquitous-language.md
 interface Props {
   open: boolean
@@ -53,7 +54,6 @@ export function NewStockDialog({ open, onOpenChange, onSubmitted }: Props) {
   const [stockName, setStockName] = useState('')
   const [code, setCode] = useState('')
   const [holdingCompany, setHoldingCompany] = useState('')
-  const [marketSector, setMarketSector] = useState('')
   const [purpose, setPurpose] = useState('')
   const [dividendPerShare, setDividendPerShare] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -64,7 +64,6 @@ export function NewStockDialog({ open, onOpenChange, onSubmitted }: Props) {
       setStockName('')
       setCode('')
       setHoldingCompany('')
-      setMarketSector('')
       setPurpose('')
       setDividendPerShare('')
       setError(null)
@@ -92,7 +91,6 @@ export function NewStockDialog({ open, onOpenChange, onSubmitted }: Props) {
           code,
           holdingCompany,
           market,
-          marketSector: marketSector || null,
           purpose: purpose || null,
           dividendPerShare: dividendPerShare ? Number(dividendPerShare) : 0,
         }),
@@ -182,23 +180,13 @@ export function NewStockDialog({ open, onOpenChange, onSubmitted }: Props) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">セクター</label>
-                <Input
-                  value={marketSector}
-                  onChange={(e) => setMarketSector(e.target.value)}
-                  placeholder="例: 自動車"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">投資目的</label>
-                <Input
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  placeholder="例: 長期保有"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">投資目的</label>
+              <Input
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                placeholder="例: 長期保有"
+              />
             </div>
 
             <div className="space-y-1.5">
