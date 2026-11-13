@@ -95,7 +95,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）
 - **ExchangeRate**: USD/JPY の日次レート（`rateDate` ユニーク、ADR 0005 / 0008）
 - **DividendHistory**: 受取配当。証券会社の配当明細 1 行を写す（数量・配当合計・税額合計・受取金額。集計は手取り基準、ADR 0015）
-- **StockFundamental**: 財務の最新値。銘柄ごとに 1 行で、Yahoo の通期決算の値を持つ（指標は保存しない。ADR 0020 / 0021）
+- **StockFundamental**: 通期決算の値。銘柄 × 決算期で 1 行（`(stockId, fiscalPeriodEnd)` ユニーク、ADR 0023）。指標は保存せず、基準期（期末日が最大の行）から計算する（ADR 0020 / 0021）
 - **FundamentalSnapshot**: 購入時の指標。買いの取引ごとに 1 行で、あとから変えない（基準チェックで「基準割れ」と「購入時から未達」を見分ける。ADR 0021）
 - **PortfolioSummary**: ポートフォリオサマリー（キャッシュ用）
 
@@ -129,6 +129,7 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 
 #### 基準チェック (`/api/fundamental-checks`)
 - `GET /api/fundamental-checks` - 保有銘柄が銘柄選びのスキルと同じ基準を満たしているか（`stockId` で 1 銘柄。ADR 0021）。DB を読むだけで Yahoo には問い合わせない
+  - 各行の `sell` は売りの判定（ADR 0023）。購入時ではなく**前の通期決算**と比べ、ROE・自己資本比率・有利子負債倍率だけを使う。画面はまだ使っていない
 
 #### 取引管理 (`/api/transactions`)
 - `GET /api/transactions` - 取引履歴（ページング・フィルタ対応）

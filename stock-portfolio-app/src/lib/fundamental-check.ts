@@ -23,29 +23,33 @@ export interface IndicatorValues {
 
 type CriterionKey = 'roe' | 'fcfYield' | 'equityRatio' | 'debtToEquity' | 'altmanZ' | 'trend'
 
-interface Criterion {
+export interface Criterion {
   key: CriterionKey
   label: string
   // 基準の表示（「8%以上」など）
   thresholdLabel: string
   passes: (value: number) => boolean
+  // 値が大きいほど良いか。期をまたいで悪化したかを見るのに使う（ADR 0023）
+  higherIsBetter: boolean
   // 自己資本がマイナスで値が無いとき、満たさないとみなす項目
   failsOnNegativeEquity?: boolean
 }
 
-const CRITERIA: Record<CriterionKey, Criterion> = {
-  roe: { key: 'roe', label: 'ROE', thresholdLabel: '8%以上', passes: (v) => v >= 8, failsOnNegativeEquity: true },
-  fcfYield: { key: 'fcfYield', label: 'FCF利回り', thresholdLabel: '3%以上', passes: (v) => v >= 3 },
-  equityRatio: { key: 'equityRatio', label: '自己資本比率', thresholdLabel: '40%以上', passes: (v) => v >= 40 },
+// しきい値の置き場所はここ 1 か所。売りの判定（ADR 0023）も同じ定義を読む
+export const CRITERIA: Record<CriterionKey, Criterion> = {
+  roe: { key: 'roe', label: 'ROE', thresholdLabel: '8%以上', passes: (v) => v >= 8, higherIsBetter: true, failsOnNegativeEquity: true },
+  fcfYield: { key: 'fcfYield', label: 'FCF利回り', thresholdLabel: '3%以上', passes: (v) => v >= 3, higherIsBetter: true },
+  equityRatio: { key: 'equityRatio', label: '自己資本比率', thresholdLabel: '40%以上', passes: (v) => v >= 40, higherIsBetter: true },
   debtToEquity: {
     key: 'debtToEquity',
     label: '有利子負債倍率',
     thresholdLabel: '100%以下',
     passes: (v) => v <= 100,
+    higherIsBetter: false,
     failsOnNegativeEquity: true,
   },
-  altmanZ: { key: 'altmanZ', label: 'Altman Z', thresholdLabel: '1.8以上', passes: (v) => v >= 1.8 },
-  trend: { key: 'trend', label: '200日線', thresholdLabel: '上回る', passes: (v) => v > 0 },
+  altmanZ: { key: 'altmanZ', label: 'Altman Z', thresholdLabel: '1.8以上', passes: (v) => v >= 1.8, higherIsBetter: true },
+  trend: { key: 'trend', label: '200日線', thresholdLabel: '上回る', passes: (v) => v > 0, higherIsBetter: true },
 }
 
 // 現在値が 200日線から何 % 上にいるか（下なら負）
