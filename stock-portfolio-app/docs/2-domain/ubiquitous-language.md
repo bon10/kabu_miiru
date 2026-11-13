@@ -68,7 +68,7 @@ SELL によって確定した損益の累計。**平均取得単価法**で計�
 
 ### セクター（Market Sector）
 
-業種区分。Yahoo Finance の 11 分類（Technology・Financial Services 等）か、ETF なら「ETF」。価格更新のときに、この値になっていない銘柄だけ Yahoo から取得して上書きする（[updateSectorIfNeeded](../../src/lib/sector.ts)）。GICS ではない。Yahoo が分類を返さない銘柄は手入力の値が残る。ADR 0017 参照。
+業種区分。Yahoo Finance の 11 分類（Technology・Financial Services 等）か、ETF なら「ETF」。価格更新のときに、この値になっていない銘柄だけ Yahoo から取得して上書きする（[updateSectorIfNeeded](../../src/lib/sector.ts)）。GICS ではない。画面からは入力できない。Yahoo が分類を返さない銘柄は空のまま（以前に手入力した値があれば、それが残る）。ADR 0017 参照。
 
 ### 投資目的（Purpose）
 
