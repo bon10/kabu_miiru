@@ -96,6 +96,16 @@ curl "https://query1.finance.yahoo.com/v8/finance/chart/7203.T?range=1mo&interva
 
 なお [fetchMultipleStockPrices](../src/lib/stock-price.ts) は銘柄を**直列**で処理するため、バックフィルは画面リクエストからではなくバッチ経路で実行する。
 
+#### 調整済み終値（adjclose）の信頼性
+
+chart エンドポイントは `indicators.quote[0]` に素の `open` / `close`、`indicators.adjclose[0].adjclose` に株式分割と配当で調整した終値を返す。**この調整は銘柄によって正しくない。**
+
+- 1306.T（NEXT FUNDS TOPIX 連動型上場投信）の `adjclose` は株式分割が調整されておらず、2015-01-05 に −90.1%、2026-03-30 に −90.2%、2026-04-01 に +947.9% の跳びがある（2026-11-13 に実測）
+- 1348.T（MAXIS TOPIX 上場投信）は 2014-01-06 以降、1 日で 50% を超える変化が無い（同日に実測）
+- 日経 225 構成銘柄 198 銘柄では、1 日で 40% を超える変化は 7974.T の 2016-07-12（+40.4%）の 1 件だけで、これは実際の値動き（同日に実測）
+
+建玉を日をまたいで持つ計算に使うときは、調整漏れを「株価が 9 割下がった」と読んで偽の損益が出る。取り込んだ後に跳びを機械的に確かめること（`feature/paper-strategy-backtest` ブランチの `src/lib/backtest/validate.ts` の `findPriceGlitches` が実装例）。跳びが分割の調整漏れなのか実際の急騰なのかは値段だけでは決められないため、自動では直さない。
+
 ### 実装詳細
 
 #### 銘柄コード変換
@@ -238,6 +248,7 @@ GET https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/times
 - **レスポンス**：`timeseries.result` に type ごとの要素が並び、`result[i][type]` が決算期ごとの配列になる。各要素は `asOfDate`（決算期末日）・`currencyCode`（財務の通貨）・`reportedValue.raw`。欠けた期は `null` が入る
 - **欠け**：項目ごとに最新期がずれることがある（JNJ の `annualRetainedEarnings` は最新が 2023-12-31、ほかは 2025-12-31）
 - **通貨**：財務の通貨で返る。ADR は株価と通貨が違う（TSM は TWD）
+- **返る期は直近 4 期だけ**：`period1` を何年前に置いても、通期の値は直近 4 期しか返らない。7203.T で `period1` を 2013-01-01 にしても 2022-03-31〜2025-03-31 期の 4 件だった（2026-11-13 に実測）。過去に遡って ROE・FCF利回りを計算することはできないため、バックテストで財務を使える期間はここで決まる（[ADR 0022](7-adr/0022-paper-strategy-backtest.md)）
 
 株価の安値と200日線は、同じ chart エンドポイントの `range=2y&interval=1d` の終値から計算する。
 
