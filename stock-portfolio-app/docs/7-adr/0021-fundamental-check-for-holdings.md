@@ -83,6 +83,7 @@ Accepted (2026-11-12)
 
 ## 関連
 
+- [ADR 0023 売りは決算で動く指標だけで判断し、買いは安値圏で見つけて200日線の回復を待つ](0023-buy-sell-timing.md)（この判定のどれを売りの引き金にするか。悪化の判定は購入時ではなく前の通期決算と比べる）
 - [ADR 0020 銘柄の財務指標は Yahoo の通期決算から計算する](0020-fundamentals-from-yahoo-timeseries.md)（指標の計算）
 - [ADR 0018 MCP サーバーは読み取り専用の DB ユーザーで本番 DB を直接読む](0018-mcp-server-read-only-db-access.md)（読めるテーブルを足す）
 - [ADR 0008 初期残高 Transaction](0008-initial-balance-transaction.md)（初期残高には購入時の指標を作らない）

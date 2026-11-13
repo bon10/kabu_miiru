@@ -170,6 +170,7 @@ pnpm backtest:run        # 回して成績を表示し、評価額の推移を C
 
 ## 関連
 
+- [ADR 0023 売りは決算で動く指標だけで判断し、買いは安値圏で見つけて200日線の回復を待つ](0023-buy-sell-timing.md)（本 ADR の結果を受けて決めた売買タイミング）
 - [ADR 0021 保有銘柄の基準チェックは、固定の基準と購入時の指標で判定する](0021-fundamental-check-for-holdings.md)（しきい値の出どころ。本 ADR はその判定を変えない）
 - [ADR 0020 銘柄の財務指標は Yahoo の通期決算から計算する](0020-fundamentals-from-yahoo-timeseries.md)（指標の式と取得元）
 - [ADR 0019 配当利回りと予想年間配当は読み取り時に計算する](0019-derive-dividend-yield-and-expected-annual-dividend.md)（株価で変わる値を保存しない考え方）
