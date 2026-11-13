@@ -57,7 +57,16 @@ interface TimeseriesResponse {
  * 各項目は基準期の値だけを使う。基準期の値が無い項目は null。
  * 自己資本が取れなければ、比率を 1 つも計算できないので null を返す。
  */
-export function parseAnnualFundamentals(payload: unknown): AnnualFundamentals | null {
+/**
+ * timeseries API のレスポンスから、通期決算を期ごとに読む（古い順）。
+ *
+ * 自己資本が取れた期だけを 1 件とし、各項目はその期の値だけを使う（ADR 0020 の
+ * 「基準期をそろえる」を期ごとに当てる）。ある項目だけ期が欠けることがあるため、
+ * 欠けた項目は古い期の値で埋めずに null にする。
+ *
+ * 返る期は Yahoo が返すぶんだけで、通期は直近 4 期しか返らない（docs/external-apis.md）。
+ */
+export function parseAnnualFundamentalsSeries(payload: unknown): AnnualFundamentals[] {
   const results = (payload as TimeseriesResponse)?.timeseries?.result ?? []
 
   const pointsByType = new Map<string, TimeseriesPoint[]>()
@@ -65,34 +74,35 @@ export function parseAnnualFundamentals(payload: unknown): AnnualFundamentals | 
     const type = r.meta?.type?.[0]
     if (!type) continue
     const points = ((r[type] as Array<TimeseriesPoint | null> | undefined) ?? []).filter(
-      (p): p is TimeseriesPoint =>
-        !!p && !!p.asOfDate && Number.isFinite(p.reportedValue?.raw),
+      (p): p is TimeseriesPoint => !!p && !!p.asOfDate && Number.isFinite(p.reportedValue?.raw),
     )
     pointsByType.set(type, points)
   }
 
-  const equityPoints = pointsByType.get(ANNUAL_TYPES.equity) ?? []
-  const latestEquity = equityPoints.reduce<TimeseriesPoint | null>(
-    (latest, p) => (!latest || p.asOfDate! > latest.asOfDate! ? p : latest),
-    null,
+  const equityPoints = [...(pointsByType.get(ANNUAL_TYPES.equity) ?? [])].sort((a, b) =>
+    a.asOfDate!.localeCompare(b.asOfDate!),
   )
-  if (!latestEquity) return null
 
-  const fiscalPeriodEnd = latestEquity.asOfDate!
-  const valueAt = (field: AnnualField): number | null => {
-    const point = pointsByType.get(ANNUAL_TYPES[field])?.find((p) => p.asOfDate === fiscalPeriodEnd)
-    return point?.reportedValue?.raw ?? null
-  }
+  return equityPoints.map((equityPoint) => {
+    const fiscalPeriodEnd = equityPoint.asOfDate!
+    const valueAt = (field: AnnualField): number | null => {
+      const point = pointsByType
+        .get(ANNUAL_TYPES[field])
+        ?.find((p) => p.asOfDate === fiscalPeriodEnd)
+      return point?.reportedValue?.raw ?? null
+    }
+    const fields = Object.fromEntries(
+      (Object.keys(ANNUAL_TYPES) as AnnualField[]).map((field) => [field, valueAt(field)]),
+    ) as Record<AnnualField, number | null>
 
-  const fields = Object.fromEntries(
-    (Object.keys(ANNUAL_TYPES) as AnnualField[]).map((field) => [field, valueAt(field)]),
-  ) as Record<AnnualField, number | null>
+    return { fiscalPeriodEnd, currency: equityPoint.currencyCode ?? '', ...fields }
+  })
+}
 
-  return {
-    fiscalPeriodEnd,
-    currency: latestEquity.currencyCode ?? '',
-    ...fields,
-  }
+// 基準期（自己資本が取れた最新の決算期）の値。指標の計算に使う（ADR 0020）
+export function parseAnnualFundamentals(payload: unknown): AnnualFundamentals | null {
+  const series = parseAnnualFundamentalsSeries(payload)
+  return series.length > 0 ? series[series.length - 1] : null
 }
 
 export interface FundamentalIndicators {
@@ -209,7 +219,10 @@ export interface StockFundamentals {
   price: number
   priceCurrency: string
   priceDate: Date
+  // 基準期（最新期）の値。指標の計算に使う
   annual: AnnualFundamentals | null
+  // 通期決算を期ごとに古い順。売りの判定（ADR 0023）で前の期と比べるのに使う
+  annualSeries: AnnualFundamentals[]
   indicators: FundamentalIndicators | null
   priceStats: PriceStats
   // 計算に使った日次終値（古い順・2 年ぶん）。保有銘柄なら DailyPrice に保存して再利用する
@@ -218,7 +231,13 @@ export interface StockFundamentals {
 
 // timeseries API は quoteSummary と違い crumb なしで返る（2026-11-12 に実測。
 // 非公式 API のため仕様の保証は無い）。period1 は基準期を含めて数期ぶんあれば足りる。
-export async function fetchAnnualFundamentals(apiSymbol: string): Promise<AnnualFundamentals | null> {
+/**
+ * 通期決算を期ごとに取る（古い順）。period1 を何年前に置いても直近 4 期しか返らない
+ * （docs/external-apis.md）。売りの判定（ADR 0023）は前の期と比べるため、期ごとに保存する。
+ */
+export async function fetchAnnualFundamentalsSeries(
+  apiSymbol: string,
+): Promise<AnnualFundamentals[]> {
   const period1 = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60
   const period2 = Math.floor(Date.now() / 1000)
   const url =
@@ -227,7 +246,13 @@ export async function fetchAnnualFundamentals(apiSymbol: string): Promise<Annual
 
   const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
   if (!response.ok) throw new Error(`財務の値を取得できませんでした（HTTP ${response.status}）`)
-  return parseAnnualFundamentals(await response.json())
+  return parseAnnualFundamentalsSeries(await response.json())
+}
+
+// 基準期の値だけが要るとき（指標の計算。ADR 0020）
+export async function fetchAnnualFundamentals(apiSymbol: string): Promise<AnnualFundamentals | null> {
+  const series = await fetchAnnualFundamentalsSeries(apiSymbol)
+  return series.length > 0 ? series[series.length - 1] : null
 }
 
 // 200日線に 200 営業日、52週安値に 1 年ぶんの終値が要るため、2 年ぶんを取る
@@ -252,10 +277,11 @@ async function fetchPriceHistory(
  */
 export async function fetchStockFundamentals(code: string): Promise<StockFundamentals> {
   const apiSymbol = getApiSymbol(code)
-  const [annual, history] = await Promise.all([
-    fetchAnnualFundamentals(apiSymbol),
+  const [annualSeries, history] = await Promise.all([
+    fetchAnnualFundamentalsSeries(apiSymbol),
     fetchPriceHistory(apiSymbol),
   ])
+  const annual = annualSeries.length > 0 ? annualSeries[annualSeries.length - 1] : null
 
   const latest = history.closes[history.closes.length - 1]
   return {
@@ -265,6 +291,7 @@ export async function fetchStockFundamentals(code: string): Promise<StockFundame
     priceCurrency: history.currency,
     priceDate: latest.priceDate,
     annual,
+    annualSeries,
     indicators: annual
       ? computeFundamentalIndicators(annual, { price: latest.close, currency: history.currency })
       : null,

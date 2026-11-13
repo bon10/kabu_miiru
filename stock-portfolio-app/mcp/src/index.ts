@@ -395,8 +395,16 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
   - not_applicable：ETF（対象外）
 項目ごとに、今の値・購入時の値・判定を返す。比率はパーセントの値、200日線は「200日線から何 % 上か」。
 
+あわせて売りの判定（sell）を返す。これは ADR 0023 のルールで、基準チェック（上の status）とは比べる相手が違う。基準チェックは購入時と比べるが、売りの判定は前の通期決算と比べる。
+使う指標は通期決算だけで動く ROE・自己資本比率・有利子負債倍率（米国株は ROE・有利子負債倍率）。FCF利回り・Altman Z・200日線は株価でも動くので使わない（保有銘柄が値上がりすると FCF利回りが基準を割るため）。
+  - consider_sell：前の期より悪化して基準を下回った状態が 2 期続いている（売りを検討する）
+  - first_period：その 1 期目（まだ様子を見る）
+  - ok：引き金なし。基準を下回っていても前の期より良くなっていれば、ここに入る
+  - no_data：比べる前の期が無い、または値が無い
+  - not_applicable：ETF（対象外）
+
 今の値は、最後に価格更新した時点の株価と、保存済みの財務の値（直近の通期決算）から計算する。DB を読むだけで Yahoo には問い合わせない。
-売買を勧めるものではない。基準割れの銘柄をまとめるときも、判断材料として伝える。
+売買を勧めるものではない。基準割れや売りを検討の銘柄をまとめるときも、判断材料として伝える。
 
 使い方の例:
   - 「基準割れの銘柄をまとめて」 -> status="broken"
@@ -426,6 +434,12 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
           rows.filter((r) => r.check.status === s).length,
         ]),
       )
+      const sellCounts = Object.fromEntries(
+        (['consider_sell', 'first_period', 'ok', 'no_data', 'not_applicable'] as const).map((s) => [
+          s,
+          rows.filter((r) => r.sell.status === s).length,
+        ]),
+      )
       const matched = status ? rows.filter((r) => r.check.status === status) : rows
 
       const toItem = (r: FundamentalCheckRow) => ({
@@ -443,6 +457,18 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
           status: i.status,
         })),
         notes: r.check.notes.map((n) => FUNDAMENTAL_CHECK_NOTE_TEXT[n]),
+        sell: {
+          status: r.sell.status,
+          items: r.sell.items.map((i) => ({
+            key: i.key,
+            label: i.label,
+            threshold: i.thresholdLabel,
+            latest: i.latest,
+            previous: i.previous,
+            status: i.status,
+            first_period_end: i.firstPeriodEnd,
+          })),
+        },
         purchase_values_recorded_on: r.snapshot ? formatDateKey(r.snapshot.recordedOn) : null,
         purchase_values_are_check_start: r.snapshot?.isCheckStart ?? false,
         fiscal_period_end: r.fiscalPeriodEnd ? formatDateKey(r.fiscalPeriodEnd) : null,
@@ -450,7 +476,7 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
       })
 
       if (response_format === 'json') {
-        const data = { counts, stocks: matched.map(toItem) }
+        const data = { counts, sell_counts: sellCounts, stocks: matched.map(toItem) }
         return {
           content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
           structuredContent: data,
@@ -470,6 +496,20 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
         unmet_since_purchase: '購入時から未達',
         no_data: 'データなし',
       } as const
+      // 売りの判定（ADR 0023）。基準チェックとは比べる相手が違う
+      const SELL_STATUS_LABEL = {
+        consider_sell: '売りを検討',
+        first_period: '1 期目',
+        ok: '引き金なし',
+        no_data: '判定できない',
+        not_applicable: '対象外（ETF）',
+      } as const
+      const SELL_ITEM_LABEL = {
+        ok: '○',
+        first_period: '1 期目',
+        consider_sell: '2 期続いている',
+        no_data: 'データなし',
+      } as const
       const fmt = (key: string, v: number | null) =>
         v === null ? '-' : key === 'altmanZ' ? v.toFixed(2) : `${key === 'trend' && v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 
@@ -477,6 +517,8 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
         '# 保有銘柄の基準チェック',
         '',
         `基準割れ ${counts.broken} / 購入時から未達 ${counts.unmet} / 満たしている ${counts.ok} / データなし ${counts.no_data} / 対象外 ${counts.not_applicable}`,
+        '',
+        `売りの判定（前の期と比べる）：売りを検討 ${sellCounts.consider_sell} / 1 期目 ${sellCounts.first_period} / 引き金なし ${sellCounts.ok} / 判定できない ${sellCounts.no_data} / 対象外 ${sellCounts.not_applicable}`,
       ]
       if (matched.length === 0) lines.push('', '条件に合う銘柄はありません。')
       for (const r of matched) {
@@ -493,10 +535,19 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
           )
         }
         for (const n of r.check.notes) lines.push(`注：${FUNDAMENTAL_CHECK_NOTE_TEXT[n]}`)
+        lines.push(`売りの判定：${SELL_STATUS_LABEL[r.sell.status]}`)
+        // 引き金が付いた銘柄だけ、どの項目がいつから続いているかを出す
+        if (r.sell.status === 'first_period' || r.sell.status === 'consider_sell') {
+          lines.push('| 項目 | 基準 | 直近期 | 前の期 | 判定 | 1 期目 |', '| --- | --- | ---: | ---: | --- | --- |')
+          for (const i of r.sell.items) {
+            lines.push(`| ${i.label} | ${i.thresholdLabel} | ${fmt(i.key, i.latest)} | ${fmt(i.key, i.previous)} | ${SELL_ITEM_LABEL[i.status]} | ${i.firstPeriodEnd ?? '-'} |`)
+          }
+        }
       }
       lines.push(
         '',
         '今の値は最後に価格更新した時点の株価と、直近の通期決算から計算している。売買を勧めるものではない。',
+        '売りの判定は前の通期決算と比べたもの（ADR 0023）。基準チェックの「基準割れ」は購入時と比べたもので、別の判定。',
         priceFreshness(matched),
       )
       return { content: [{ type: 'text', text: lines.join('\n') }] }

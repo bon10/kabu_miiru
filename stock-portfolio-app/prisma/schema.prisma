@@ -62,7 +62,7 @@ model Stock {
   dividendHistory       DividendHistory[]
   priceHistory          PriceHistory[]
   dailyPrices           DailyPrice[]
-  fundamental           StockFundamental?
+  fundamentals          StockFundamental[]
   fundamentalSnapshots  FundamentalSnapshot[]
 }
 
@@ -70,10 +70,13 @@ model Stock {
 // Yahoo の通期決算の値をそのまま持ち（ADR 0020）、ROE・FCF利回りなどの指標は
 // 保存しない。FCF利回りと Altman Z は株価で毎日変わるため、判定のたびに現在価格から計算する。
 // 項目は基準期（fiscalPeriodEnd）の値で、その期の値が無い項目は NULL。
+/// 通期決算の値。銘柄 × 決算期で 1 行（ADR 0023）。
+/// 指標の計算に使う基準期は、その銘柄の fiscalPeriodEnd が最大の行（ADR 0020）。
+/// 古い期は、売りの判定で前の期と比べるために持つ
 model StockFundamental {
   id                Int      @id @default(autoincrement())
-  stockId           Int      @unique
-  fiscalPeriodEnd   DateTime @db.Date // 基準期（決算期末日）
+  stockId           Int
+  fiscalPeriodEnd   DateTime @db.Date // 決算期末日
   currency          String   // 財務の通貨（JPY / USD / TWD など）。株価の通貨と違えば時価総額を計算しない
   equity            Decimal? @db.Decimal(24,2) // 自己資本
   totalAssets       Decimal? @db.Decimal(24,2) // 総資産
@@ -90,6 +93,8 @@ model StockFundamental {
   source            String   // 取得元（yahoo）
 
   stock             Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, fiscalPeriodEnd])
 }
 
 // 購入時の指標（ADR 0021）。買いの取引ごとに、その時点の指標を残し、あとから変えない。

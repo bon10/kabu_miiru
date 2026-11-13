@@ -248,7 +248,7 @@ GET https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/times
 - **レスポンス**：`timeseries.result` に type ごとの要素が並び、`result[i][type]` が決算期ごとの配列になる。各要素は `asOfDate`（決算期末日）・`currencyCode`（財務の通貨）・`reportedValue.raw`。欠けた期は `null` が入る
 - **欠け**：項目ごとに最新期がずれることがある（JNJ の `annualRetainedEarnings` は最新が 2023-12-31、ほかは 2025-12-31）
 - **通貨**：財務の通貨で返る。ADR は株価と通貨が違う（TSM は TWD）
-- **返る期は直近 4 期だけ**：`period1` を何年前に置いても、通期の値は直近 4 期しか返らない。7203.T で `period1` を 2013-01-01 にしても 2022-03-31〜2025-03-31 期の 4 件だった（2026-11-13 に実測）。過去に遡って ROE・FCF利回りを計算することはできないため、バックテストで財務を使える期間はここで決まる（[ADR 0022](7-adr/0022-paper-strategy-backtest.md)）
+- **返る期は直近 4 期だけ**：`period1` を何年前に置いても、通期の値は直近 4 期しか返らない。7203.T で `period1` を 2013-01-01 にしても 2022-03-31〜2025-03-31 期の 4 件だった（2026-11-13 に実測）。過去に遡って ROE・FCF利回りを計算することはできないため、バックテストで財務を使える期間はここで決まる（[ADR 0022](7-adr/0022-paper-strategy-backtest.md)）。返る 4 期は `StockFundamental` に期ごとに保存し、売りの判定で前の期と比べるのに使う（[ADR 0023](7-adr/0023-buy-sell-timing.md)）
 
 株価の安値と200日線は、同じ chart エンドポイントの `range=2y&interval=1d` の終値から計算する。
 

@@ -4,6 +4,7 @@ import {
   computeFundamentalIndicators,
   computePriceStats,
   parseAnnualFundamentals,
+  parseAnnualFundamentalsSeries,
   type AnnualFundamentals,
 } from '@/lib/fundamentals'
 
@@ -212,5 +213,54 @@ describe('computePriceStats', () => {
       yearToDateLow: null,
       low52Week: null,
     })
+  })
+})
+
+describe('parseAnnualFundamentalsSeries', () => {
+  // 期ごとの値は、売りの判定（ADR 0023）で前の期と比べるのに使う
+  const payload = {
+    timeseries: {
+      result: [
+        series('annualStockholdersEquity', [
+          ['2024-03-31', 800],
+          ['2025-03-31', 900],
+          ['2026-03-31', 1000],
+        ]),
+        series('annualTotalAssets', [
+          ['2024-03-31', 2000],
+          ['2026-03-31', 2500],
+        ]),
+        series('annualNetIncomeCommonStockholders', [
+          ['2024-03-31', 80],
+          ['2025-03-31', 60],
+          ['2026-03-31', 120],
+        ]),
+      ],
+    },
+  }
+
+  it('自己資本が取れた期ごとに 1 件返し、古い順に並べる', () => {
+    const parsed = parseAnnualFundamentalsSeries(payload)
+    expect(parsed.map((a) => a.fiscalPeriodEnd)).toEqual(['2024-03-31', '2025-03-31', '2026-03-31'])
+  })
+
+  it('期ごとに、その期の値だけを使う（ほかの期の値で埋めない）', () => {
+    const parsed = parseAnnualFundamentalsSeries(payload)
+    expect(parsed[1]).toMatchObject({
+      fiscalPeriodEnd: '2025-03-31',
+      equity: 900,
+      netIncome: 60,
+      // 2025-03-31 の総資産は返っていないので null（2024 や 2026 の値で埋めない）
+      totalAssets: null,
+    })
+  })
+
+  it('自己資本が 1 期も取れなければ空', () => {
+    expect(parseAnnualFundamentalsSeries({ timeseries: { result: [] } })).toEqual([])
+  })
+
+  it('最新期は parseAnnualFundamentals と同じ値になる', () => {
+    const parsed = parseAnnualFundamentalsSeries(payload)
+    expect(parsed[parsed.length - 1]).toEqual(parseAnnualFundamentals(payload))
   })
 })

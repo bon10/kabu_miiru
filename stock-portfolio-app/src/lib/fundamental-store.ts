@@ -11,12 +11,13 @@ import {
 import {
   computeFundamentalIndicators,
   computePriceStats,
-  fetchAnnualFundamentals,
+  fetchAnnualFundamentalsSeries,
   fetchStockFundamentals,
   type AnnualFundamentals,
   type FundamentalIndicators,
 } from '@/lib/fundamentals'
 import { ETF_SECTOR } from '@/lib/sector'
+import { judgeSellSignal, type SellPeriod, type SellSignal } from '@/lib/sell-signal'
 import { getApiSymbol } from '@/lib/utils'
 
 // 基準チェックの保存と読み出し（ADR 0021）。判定そのものは fundamental-check.ts。
@@ -35,8 +36,20 @@ export const FUNDAMENTAL_REFRESH_DAYS = 30
 // チェック開始日を保存する Setting のキー。API から書き換えられないよう SETTING_KEYS には入れない
 const CHECK_START_DATE_KEY = 'fundamentalCheckStartDate'
 
-export function shouldRefreshFundamental(fetchedAt: Date | null, now: Date): boolean {
+/**
+ * 財務の値を取り直すか。
+ *
+ * storedPeriods は、その銘柄について保存済みの決算期の数。売りの判定（ADR 0023）は
+ * 前の期と比べるため 2 期要る。期ごとの保存を始める前に取った銘柄は 1 期しか持たないので、
+ * 取得日が新しくても取り直して過去の期を埋める。
+ */
+export function shouldRefreshFundamental(
+  fetchedAt: Date | null,
+  now: Date,
+  storedPeriods: number,
+): boolean {
   if (!fetchedAt) return true
+  if (storedPeriods < 2) return true
   return now.getTime() - fetchedAt.getTime() >= FUNDAMENTAL_REFRESH_DAYS * 24 * 60 * 60 * 1000
 }
 
@@ -67,20 +80,52 @@ function dateKeyOfIso(iso: string): Date {
   return dateKeyOf(y, m - 1, d)
 }
 
-async function saveFundamental(stockId: number, annual: AnnualFundamentals): Promise<void> {
-  const { fiscalPeriodEnd, currency, ...values } = annual
-  const data = {
-    ...values,
-    fiscalPeriodEnd: dateKeyOfIso(fiscalPeriodEnd),
-    currency,
-    fetchedAt: new Date(),
-    source: 'yahoo',
+// 通期決算を期ごとに保存する（銘柄 × 決算期で 1 行。ADR 0023）。
+// 取り直したときは同じ期の行を上書きする（Yahoo が後から値を直すことがあるため）
+async function saveFundamentals(stockId: number, series: AnnualFundamentals[]): Promise<void> {
+  const fetchedAt = new Date()
+  for (const annual of series) {
+    const { fiscalPeriodEnd, currency, ...values } = annual
+    const data = {
+      ...values,
+      fiscalPeriodEnd: dateKeyOfIso(fiscalPeriodEnd),
+      currency,
+      fetchedAt,
+      source: 'yahoo',
+    }
+    await prisma.stockFundamental.upsert({
+      where: { stockId_fiscalPeriodEnd: { stockId, fiscalPeriodEnd: data.fiscalPeriodEnd } },
+      create: { stockId, ...data },
+      update: data,
+    })
   }
-  await prisma.stockFundamental.upsert({
-    where: { stockId },
-    create: { stockId, ...data },
-    update: data,
-  })
+}
+
+/**
+ * 売りの判定（ADR 0023）に渡す期ごとの値。古い順に並べる。
+ *
+ * ROE・自己資本比率・有利子負債倍率は株価を使わないため、価格 0 で計算しても同じ値になる
+ * （FCF利回りと Altman Z は時価総額を使うので null になるが、売りの判定では使わない）。
+ * 指標の式を書き写さず computeFundamentalIndicators をそのまま使う。
+ */
+function sellPeriodsOf(rows: StockFundamental[], market: string): SellPeriod[] {
+  return [...rows]
+    .sort((a, b) => a.fiscalPeriodEnd.getTime() - b.fiscalPeriodEnd.getTime())
+    .map((row) => {
+      const indicators = computeFundamentalIndicators(annualOfRow(row), {
+        price: 0,
+        currency: currencyOfMarket(market),
+      })
+      return {
+        fiscalPeriodEnd: formatDateKey(row.fiscalPeriodEnd),
+        values: {
+          roe: indicators.roe,
+          equityRatio: indicators.equityRatio,
+          debtToEquity: indicators.debtToEquity,
+          negativeEquity: indicators.negativeEquity,
+        },
+      }
+    })
 }
 
 /**
@@ -95,14 +140,18 @@ export async function refreshFundamentalIfStale(stock: {
 }): Promise<void> {
   if (stock.marketSector === ETF_SECTOR) return
   try {
-    const row = await prisma.stockFundamental.findUnique({
-      where: { stockId: stock.id },
-      select: { fetchedAt: true },
-    })
-    if (!shouldRefreshFundamental(row?.fetchedAt ?? null, new Date())) return
+    const [row, storedPeriods] = await Promise.all([
+      prisma.stockFundamental.findFirst({
+        where: { stockId: stock.id },
+        orderBy: { fiscalPeriodEnd: 'desc' },
+        select: { fetchedAt: true },
+      }),
+      prisma.stockFundamental.count({ where: { stockId: stock.id } }),
+    ])
+    if (!shouldRefreshFundamental(row?.fetchedAt ?? null, new Date(), storedPeriods)) return
 
-    const annual = await fetchAnnualFundamentals(getApiSymbol(stock.code))
-    if (annual) await saveFundamental(stock.id, annual)
+    const series = await fetchAnnualFundamentalsSeries(getApiSymbol(stock.code))
+    if (series.length > 0) await saveFundamentals(stock.id, series)
   } catch (error) {
     console.error(`Failed to refresh fundamentals for ${stock.code}:`, error)
   }
@@ -151,7 +200,7 @@ async function createSnapshot(
       ...snapshotValues(indicators),
     },
   })
-  if (fetched.annual) await saveFundamental(stock.id, fetched.annual)
+  if (fetched.annualSeries.length > 0) await saveFundamentals(stock.id, fetched.annualSeries)
   await saveDailyCloses(stock.id, fetched.closes)
 }
 
@@ -269,6 +318,8 @@ export interface FundamentalCheckRow {
   // 判定に使った購入時の指標。無ければ null
   snapshot: { recordedOn: Date; isCheckStart: boolean } | null
   check: FundamentalCheck
+  // 売りの判定（ADR 0023）。基準チェックとは比べる相手が違う（購入時ではなく前の通期決算）
+  sell: SellSignal
 }
 
 function indicatorsOfSnapshot(s: FundamentalSnapshot): IndicatorValues {
@@ -301,7 +352,7 @@ export async function loadFundamentalChecks(
       ...(options.stockIds ? { id: { in: options.stockIds } } : {}),
     },
     include: {
-      fundamental: true,
+      fundamentals: { orderBy: { fiscalPeriodEnd: 'desc' } },
       fundamentalSnapshots: { orderBy: [{ recordedOn: 'desc' }, { id: 'desc' }], take: 1 },
     },
     orderBy: { stockName: 'asc' },
@@ -327,9 +378,12 @@ export async function loadFundamentalChecks(
     const price = currentPrice > 0 ? currentPrice : null
     const movingAverage200 = computePriceStats(closesByStock.get(s.id) ?? []).movingAverage200
 
+    // 基準期は fiscalPeriodEnd が最大の行（ADR 0020）。include で降順に並べている
+    const latestFundamental = s.fundamentals[0] ?? null
+
     let current: IndicatorValues | null = null
-    if (s.fundamental) {
-      const indicators = computeFundamentalIndicators(annualOfRow(s.fundamental), {
+    if (latestFundamental) {
+      const indicators = computeFundamentalIndicators(annualOfRow(latestFundamental), {
         price: price ?? 0,
         currency: currencyOfMarket(s.market),
       })
@@ -345,8 +399,8 @@ export async function loadFundamentalChecks(
       marketSector: s.marketSector,
       currentPrice,
       lastPriceUpdate: s.lastPriceUpdate,
-      fiscalPeriodEnd: s.fundamental?.fiscalPeriodEnd ?? null,
-      fundamentalFetchedAt: s.fundamental?.fetchedAt ?? null,
+      fiscalPeriodEnd: latestFundamental?.fiscalPeriodEnd ?? null,
+      fundamentalFetchedAt: latestFundamental?.fetchedAt ?? null,
       snapshot: latestSnapshot
         ? { recordedOn: latestSnapshot.recordedOn, isCheckStart: latestSnapshot.isCheckStart }
         : null,
@@ -355,6 +409,11 @@ export async function loadFundamentalChecks(
         sector: s.marketSector,
         current,
         purchase: latestSnapshot ? indicatorsOfSnapshot(latestSnapshot) : null,
+      }),
+      sell: judgeSellSignal({
+        market: s.market,
+        sector: s.marketSector,
+        periods: sellPeriodsOf(s.fundamentals, s.market),
       }),
     }
   })
