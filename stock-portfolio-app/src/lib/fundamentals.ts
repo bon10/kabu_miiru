@@ -5,8 +5,8 @@ import { getApiSymbol } from '@/lib/utils'
 // 銘柄の財務の値と、そこから計算する指標（ROE・FCF利回り・自己資本比率・
 // 有利子負債倍率・Altman Z）、株価の履歴から計算する値（200日線・安値）。
 //
-// 銘柄選びのスキル（value-stock-screener）と、保有銘柄の基準割れの判定で同じ値を
-// 使うため、取得と計算をここに集める（ADR 0020）。
+// 銘柄選びのスキル（value-stock-screener）と、保有銘柄の基準チェック・売りの判定で
+// 同じ値を使うため、取得と計算をここに集める（ADR 0020）。
 //
 // 財務の値は Yahoo Finance の fundamentals-timeseries（非公式 API）の通期の値を使う。
 // 同じ Yahoo の quoteSummary の financialData にも ROE などがあるが、直近12か月と
