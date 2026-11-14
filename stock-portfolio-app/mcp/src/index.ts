@@ -387,7 +387,7 @@ group_by="sector" のときは、Yahoo Finance の 11 分類のうちまだ 1 �
       description: `保有銘柄を売りの判定にかけた結果を返す。アプリの銘柄詳細「基準チェック」と同じ判定（ADR 0023）。
 
 **銘柄ごとの判定（status）はこれひとつ。** 通期決算だけで動く ROE・自己資本比率・有利子負債倍率（米国株は ROE・有利子負債倍率）を、**前の通期決算と比べる**。
-  - consider_sell：前の期より悪化して基準を下回った状態が 2 期続いている（売りを検討する）
+  - consider_sell：前の期より悪化して基準を下回り、その次の期も基準を下回ったまま（売りを検討する。2 期目にさらなる悪化は求めない）
   - first_period：その 1 期目（まだ様子を見る。今すぐすることはない）
   - ok：引き金なし。基準を下回っていても前の期より良くなっていれば、ここに入る
   - no_data：比べる前の期が無い、または値が無い
@@ -444,6 +444,9 @@ values は項目ごとの数字で、**判定ではない**。今の値・購入
           previous: i.previous,
           status: i.status,
           first_period_end: i.firstPeriodEnd,
+          // 引き金になった期の値と、その前の期の値（1 期目より後に少し戻した銘柄があるため）
+          first_period_value: i.firstPeriodValue,
+          first_period_previous: i.firstPeriodPrevious,
         })),
         values: r.values.items.map((i) => ({
           key: i.key,
@@ -490,11 +493,25 @@ values は項目ごとの数字で、**判定ではない**。今の値・購入
       const SELL_ITEM_LABEL = {
         ok: '○',
         first_period: '1 期目',
-        consider_sell: '2 期続いている',
+        consider_sell: '下回ったまま 2 期目',
         no_data: 'データなし',
       } as const
-      const fmt = (key: string, v: number | null) =>
-        v === null ? '-' : key === 'altmanZ' ? v.toFixed(2) : `${key === 'trend' && v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+      const fmt = (key: string, v: number | null, digits = 1) =>
+        v === null
+          ? '-'
+          : key === 'altmanZ'
+            ? v.toFixed(digits + 1)
+            : `${key === 'trend' && v >= 0 ? '+' : ''}${v.toFixed(digits)}%`
+      // 小数 1 桁では差が見えないことがある（29.14% と 29.09% はどちらも 29.1%）。
+      // 同じ文字列になるときは桁を増やし、悪化していることが読めるようにする
+      const fmtChange = (key: string, from: number | null, to: number | null) => {
+        for (const digits of [1, 2, 3]) {
+          const a = fmt(key, from, digits)
+          const b = fmt(key, to, digits)
+          if (a !== b || from === to || from === null || to === null) return `${a} → ${b}`
+        }
+        return `${fmt(key, from, 3)} → ${fmt(key, to, 3)}`
+      }
 
       const lines = [
         '# 保有銘柄の基準チェック（売りの判定）',
@@ -506,9 +523,12 @@ values は項目ごとの数字で、**判定ではない**。今の値・購入
         lines.push('', `## ${r.stockName}（${r.code}・${r.market}・${r.marketSector ?? 'セクター未設定'}）：${SELL_STATUS_LABEL[r.sell.status]}`)
         // 引き金が付いた銘柄だけ、どの項目がいつから続いているかを出す
         if (r.sell.status === 'first_period' || r.sell.status === 'consider_sell') {
-          lines.push('| 判定に使う項目 | 基準 | 直近期 | 前の期 | 判定 | 1 期目 |', '| --- | --- | ---: | ---: | --- | --- |')
+          lines.push('| 判定に使う項目 | 基準 | 悪化した期（前の期 → その期） | 直近期 | 判定 | 1 期目 |', '| --- | --- | ---: | ---: | --- | --- |')
           for (const i of r.sell.items) {
-            lines.push(`| ${i.label} | ${i.thresholdLabel} | ${fmt(i.key, i.latest)} | ${fmt(i.key, i.previous)} | ${SELL_ITEM_LABEL[i.status]} | ${i.firstPeriodEnd ?? '-'} |`)
+            const worsened = i.firstPeriodEnd
+              ? fmtChange(i.key, i.firstPeriodPrevious, i.firstPeriodValue)
+              : '-'
+            lines.push(`| ${i.label} | ${i.thresholdLabel} | ${worsened} | ${fmt(i.key, i.latest)} | ${SELL_ITEM_LABEL[i.status]} | ${i.firstPeriodEnd ?? '-'} |`)
           }
         }
         if (r.values.items.length > 0) {

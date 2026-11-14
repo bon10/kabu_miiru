@@ -45,6 +45,43 @@ describe('judgeSellSignal', () => {
     expect(itemOf(signal, 'roe')?.firstPeriodEnd).toBe('2024-03-31')
   })
 
+  it('引き金になった期の値と、その前の期の値を返す', () => {
+    // 2024 期に 10% → 6% と悪化して基準割れ、2025 期は 7% に戻したがまだ基準以下。
+    // 直近 2 期（7% ← 6%）だけを出すと「良くなっている」と読めてしまうため、
+    // 悪化した期（6% ← 10%）の値も返す
+    const signal = jp([
+      period('2023-03-31', { roe: 10 }),
+      period('2024-03-31', { roe: 6 }),
+      period('2025-03-31', { roe: 7 }),
+    ])
+    expect(itemOf(signal, 'roe')).toMatchObject({
+      status: 'consider_sell',
+      latest: 7,
+      previous: 6,
+      firstPeriodEnd: '2024-03-31',
+      firstPeriodValue: 6,
+      firstPeriodPrevious: 10,
+    })
+  })
+
+  it('1 期目が直近期なら、引き金の期の値は直近期の値と同じ', () => {
+    const signal = jp([period('2024-03-31', { roe: 10 }), period('2025-03-31', { roe: 6 })])
+    expect(itemOf(signal, 'roe')).toMatchObject({
+      status: 'first_period',
+      firstPeriodValue: 6,
+      firstPeriodPrevious: 10,
+    })
+  })
+
+  it('引き金が無い項目は引き金の期の値を返さない', () => {
+    const signal = jp([period('2024-03-31'), period('2025-03-31')])
+    expect(itemOf(signal, 'roe')).toMatchObject({
+      status: 'ok',
+      firstPeriodValue: null,
+      firstPeriodPrevious: null,
+    })
+  })
+
   it('基準を下回っていても前の期より良くなっていれば引き金にしない', () => {
     const signal = jp([period('2024-03-31', { roe: 3 }), period('2025-03-31', { roe: 5 })])
     expect(signal.status).toBe('ok')

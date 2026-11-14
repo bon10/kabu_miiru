@@ -63,7 +63,7 @@ const fetcher = async (url: string) => {
 // 売りを検討は売りの指示ではなく、持ち続けるかを考え直すきっかけ（ADR 0023）。
 export const SELL_STATUS_SUMMARY: Record<SellStatus, string> = {
   consider_sell:
-    '稼ぐ力か財務の安全性が、前の年より悪くなって基準を下回った状態が 2 期続いています。この銘柄を持ち続けるか、もう一度考えるきっかけです。',
+    '稼ぐ力か財務の安全性が、前の年より悪くなって基準を下回り、その次の期も基準を下回ったままです。この銘柄を持ち続けるか、もう一度考えるきっかけです。',
   first_period:
     '稼ぐ力か財務の安全性が、前の年より悪くなって基準を下回りました。1 期目なので、次の決算でも戻らなければ考えるきっかけになります。今すぐすることはありません。',
   ok: '売りを考える材料はありません。基準を下回っている項目があっても、前の年より良くなっているなら引き金になりません。今はすることはありません。',
@@ -154,16 +154,35 @@ const SELL_TRIGGER_KEYS: CriterionKey[] = ['roe', 'equityRatio', 'debtToEquity']
 const SELL_ITEM_LABEL = {
   ok: '引き金なし',
   first_period: '1 期目',
-  consider_sell: '2 期続いている',
+  consider_sell: '下回ったまま 2 期目',
   no_data: 'データなし',
 } as const
 
 // 基準チェックの値の表示。比率はパーセント、Altman Z は倍率、200日線は「200日線から何 % 上か」
-export function formatCheckValue(key: CriterionKey, value: number | null): string {
+export function formatCheckValue(key: CriterionKey, value: number | null, digits = 1): string {
   if (value === null) return '-'
-  if (key === 'altmanZ') return value.toFixed(2)
-  if (key === 'trend') return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
-  return `${value.toFixed(1)}%`
+  if (key === 'altmanZ') return value.toFixed(digits + 1)
+  if (key === 'trend') return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`
+  return `${value.toFixed(digits)}%`
+}
+
+/**
+ * 「前の期 → その期」の 2 つの値を並べて書く。
+ *
+ * 小数 1 桁では差が見えないことがある（29.14% と 29.09% はどちらも 29.1%）。
+ * 同じ文字列になるときは桁を増やし、悪化していることが読めるようにする。
+ */
+export function formatCheckChange(
+  key: CriterionKey,
+  from: number | null,
+  to: number | null,
+): string {
+  for (const digits of [1, 2, 3]) {
+    const a = formatCheckValue(key, from, digits)
+    const b = formatCheckValue(key, to, digits)
+    if (a !== b || from === to || from === null || to === null) return `${a} → ${b}`
+  }
+  return `${formatCheckValue(key, from, 3)} → ${formatCheckValue(key, to, 3)}`
 }
 
 export function FundamentalCheckCard({
@@ -260,8 +279,8 @@ export function FundamentalCheckCard({
                     <TableRow>
                       <TableHead>項目</TableHead>
                       <TableHead>基準</TableHead>
+                      <TableHead className="text-right">悪化した期（前の期 → その期）</TableHead>
                       <TableHead className="text-right">直近期</TableHead>
-                      <TableHead className="text-right">前の期</TableHead>
                       <TableHead>判定</TableHead>
                       <TableHead>1 期目</TableHead>
                     </TableRow>
@@ -271,8 +290,12 @@ export function FundamentalCheckCard({
                       <TableRow key={item.key}>
                         <TableCell className="whitespace-nowrap">{item.label}</TableCell>
                         <TableCell className="whitespace-nowrap">{item.thresholdLabel}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right">
+                          {item.firstPeriodEnd
+                            ? formatCheckChange(item.key, item.firstPeriodPrevious, item.firstPeriodValue)
+                            : '-'}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-right">{formatCheckValue(item.key, item.latest)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-right">{formatCheckValue(item.key, item.previous)}</TableCell>
                         <TableCell
                           className={`whitespace-nowrap ${item.status === 'consider_sell' ? 'text-amber-700 font-semibold' : item.status === 'first_period' ? 'text-amber-700' : 'text-muted-foreground'}`}
                         >
@@ -296,7 +319,7 @@ export function FundamentalCheckCard({
                 <p>
                   購入時の値：{formatDate(row.snapshot.recordedOn)} 時点
                   {row.snapshot.isCheckStart && `。${FUNDAMENTAL_CHECK_START_NOTE}`}
-                  。比べるための数字で、判定には使いません。
+                  比べるための数字で、判定には使いません。
                 </p>
               )}
               {row.fiscalPeriodEnd && (
@@ -309,7 +332,8 @@ export function FundamentalCheckCard({
               )}
               <p>
                 基準は銘柄選びのスキルと同じ固定値です。200日線は「200日線から何 % 上か」を表します。
-                売りの判定は ROE・自己資本比率・有利子負債倍率を前の期と比べたもので、株価で動く項目は使いません。売買を勧めるものではありません。
+                売りの判定は ROE・自己資本比率・有利子負債倍率を前の期と比べたもので、株価で動く項目は使いません。
+                「悪化した期」は引き金になった決算期の値です。そのあと少し戻していても、基準を下回ったままなら判定は続きます。売買を勧めるものではありません。
               </p>
             </div>
           </>

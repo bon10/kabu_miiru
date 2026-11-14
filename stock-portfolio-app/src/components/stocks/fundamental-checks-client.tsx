@@ -18,6 +18,7 @@ import {
   FundamentalStatusIcon,
   SELL_STATUS_LABEL,
   SELL_STATUS_SUMMARY,
+  formatCheckChange,
   formatCheckValue,
   sellBadgeClassName,
   type FundamentalCheckRow,
@@ -50,7 +51,7 @@ const ALL = 'all'
 const SUMMARY_CARDS: { status: SellStatus; hint: string; highlight: boolean }[] = [
   {
     status: 'consider_sell',
-    hint: '稼ぐ力か財務が、前の年より悪くなって基準を下回った状態が 2 期続いている銘柄。1 件ずつ開いて、何が変わったか見る。',
+    hint: '前の年より悪くなって基準を下回り、その次の期も基準を下回ったままの銘柄。1 件ずつ開いて、何が変わったか見る。',
     highlight: true,
   },
   {
@@ -210,7 +211,7 @@ export default function FundamentalChecksClient() {
                     <TableHead>銘柄</TableHead>
                     <TableHead>市場</TableHead>
                     <TableHead>判定</TableHead>
-                    <TableHead>悪くなった項目（直近期 ← 前の期）</TableHead>
+                    <TableHead>悪くなった項目（前の期 → 悪化した期）</TableHead>
                     <TableHead>1 期目</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -241,8 +242,11 @@ export default function FundamentalChecksClient() {
                               key={item.key}
                               className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
                             >
-                              {item.label} {formatCheckValue(item.key, item.latest)} ←{' '}
-                              {formatCheckValue(item.key, item.previous)}
+                              {item.label}{' '}
+                              {formatCheckChange(item.key, item.firstPeriodPrevious, item.firstPeriodValue)}
+                              {/* 1 期目より後に少し戻した銘柄もあるため、直近期が違えば併記する */}
+                              {item.latest !== item.firstPeriodValue &&
+                                `（直近 ${formatCheckValue(item.key, item.latest)}）`}
                             </span>
                           ))}
                         </span>

@@ -25,7 +25,7 @@ export interface TriggeredItemCount {
 
 /**
  * その項目が売りの引き金になっているか。
- * 1 期目（前の期より悪化して基準を下回った）と、それが 2 期続いている状態の両方を含む。
+ * 1 期目（前の期より悪化して基準を下回った）と、下回ったまま 2 期目になった状態の両方を含む。
  */
 export function isTriggeredItem(item: SellItem): boolean {
   return item.status === 'first_period' || item.status === 'consider_sell'

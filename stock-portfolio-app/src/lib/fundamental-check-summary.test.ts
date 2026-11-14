@@ -16,6 +16,8 @@ const item = (
   thresholdLabel: '',
   status,
   firstPeriodEnd: null,
+  firstPeriodValue: null,
+  firstPeriodPrevious: null,
   latest: null,
   previous: null,
 })

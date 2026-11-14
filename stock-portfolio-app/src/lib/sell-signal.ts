@@ -40,6 +40,12 @@ export interface SellItem {
   status: SellItemStatus
   // 1 期目と判定した期。無ければ null
   firstPeriodEnd: string | null
+  // 1 期目の値と、その 1 つ前の期の値。引き金が無ければ null。
+  // 直近 2 期（latest / previous）だけを見せると、1 期目より後に少し戻した銘柄が
+  // 「良くなっている」と読めてしまうため、悪化したときの値も返す
+  firstPeriodValue: number | null
+  firstPeriodPrevious: number | null
+  // 直近期とその 1 つ前の期の値
   latest: number | null
   previous: number | null
 }
@@ -100,6 +106,8 @@ function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
     thresholdLabel: criterion.thresholdLabel,
     status: 'no_data',
     firstPeriodEnd: null,
+    firstPeriodValue: null,
+    firstPeriodPrevious: null,
     latest: valueOf(periods[last].values, criterion),
     previous: valueOf(periods[last - 1].values, criterion),
   }
@@ -123,6 +131,8 @@ function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
       ...base,
       status: i === last ? 'first_period' : 'consider_sell',
       firstPeriodEnd: periods[i].fiscalPeriodEnd,
+      firstPeriodValue: valueOf(periods[i].values, criterion),
+      firstPeriodPrevious: valueOf(periods[i - 1].values, criterion),
     }
   }
   return { ...base, status: 'ok' }
@@ -157,6 +167,8 @@ export function judgeSellSignal(input: {
         thresholdLabel: criterion.thresholdLabel,
         status: 'no_data' as const,
         firstPeriodEnd: null,
+        firstPeriodValue: null,
+        firstPeriodPrevious: null,
         latest: periods.length > 0 ? valueOf(periods[0].values, criterion) : null,
         previous: null,
       })),
