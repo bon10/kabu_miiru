@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { CheckItem, CheckNote } from "@/lib/fundamental-check"
+import type { CheckNote, CriterionKey } from "@/lib/fundamental-check"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -71,7 +71,7 @@ export const FUNDAMENTAL_CHECK_NOTE_TEXT: Record<CheckNote, string> = {
 // 基準チェック（ADR 0021）の項目ごとの説明。画面で数字のとなりに添える。
 // 利用者は投資の専門家ではないため、指標の名前だけでなく「その数字が何を見ているか」を出す。
 // 判定に使うしきい値は fundamental-check.ts が持つ。ここは意味の説明だけで、基準は書かない。
-export const FUNDAMENTAL_CRITERION_HINT: Record<CheckItem['key'], string> = {
+export const FUNDAMENTAL_CRITERION_HINT: Record<CriterionKey, string> = {
   roe: '集めたお金でどれだけ稼げているか。低いほど稼ぐ力が弱いという見方です。',
   fcfYield:
     '手元に残る現金が、株価に対してどれだけあるか。マイナスは現金が出ていっている状態です。',

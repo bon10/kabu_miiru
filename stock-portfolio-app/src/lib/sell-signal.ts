@@ -15,6 +15,25 @@ import { ETF_SECTOR } from '@/lib/sector'
 
 export type SellCriterionKey = 'roe' | 'equityRatio' | 'debtToEquity'
 
+/**
+ * 「悪化した」とみなす幅。これより小さい動きは横ばいとして扱う。
+ *
+ * **2 つを両方満たしたときだけ悪化とする。** 片方だけでは誤判定する。
+ *   - ポイントだけで見ると、有利子負債倍率 350% が 351% に動いた（1 ポイント・0.3%）のも
+ *     悪化になる。桁の大きい銘柄では誤差の範囲
+ *   - 割合だけで見ると、ROE 0.2% が 0.1% になった（0.1 ポイント・50%）のも悪化になる
+ *
+ * 値の根拠：ROE・自己資本比率・有利子負債倍率はどれも小数 1 桁で開示される。
+ * 0.1〜0.2 ポイントは端数処理や一時的な要因で動く範囲なので、0.5 ポイント未満は横ばいとする。
+ * 割合の 2% は、有利子負債倍率が桁の大きい銘柄でも実際の悪化（CNH の 334.8% → 344.0% は
+ * 2.7%）を拾える下限として置いた。
+ *
+ * しきい値を入れた理由は、横ばいを「悪くなった」と言わないため。件数を減らすためではない
+ * （ADR 0023）。
+ */
+export const WORSENING_POINTS = 0.5
+export const WORSENING_RATIO_PERCENT = 2
+
 // 1 つの通期決算の値。比率はパーセントの値（12% なら 12）。ADR 0020
 export interface SellPeriodValues {
   roe: number | null
@@ -40,6 +59,12 @@ export interface SellItem {
   status: SellItemStatus
   // 1 期目と判定した期。無ければ null
   firstPeriodEnd: string | null
+  // 1 期目の値と、その 1 つ前の期の値。引き金が無ければ null。
+  // 直近 2 期（latest / previous）だけを見せると、1 期目より後に少し戻した銘柄が
+  // 「良くなっている」と読めてしまうため、悪化したときの値も返す
+  firstPeriodValue: number | null
+  firstPeriodPrevious: number | null
+  // 直近期とその 1 つ前の期の値
   latest: number | null
   previous: number | null
 }
@@ -71,13 +96,19 @@ function passesOf(criterion: Criterion, values: SellPeriodValues): boolean | nul
   return null
 }
 
-// 前の期より悪くなったか。判定できなければ null
+/**
+ * 前の期より悪くなったか。判定できなければ null。
+ *
+ * 少しの動きは横ばいとして扱う（WORSENING_POINTS / WORSENING_RATIO_PERCENT）。
+ * 前の期の値がゼロ以下のときは割合が意味を持たないため、ポイントだけで判定する
+ * （ROE が赤字から赤字に沈んだ場合など）。
+ */
 function worseThanPrevious(
   criterion: Criterion,
   now: SellPeriodValues,
   previous: SellPeriodValues,
 ): boolean | null {
-  // 自己資本がプラスからマイナスに転じたのは悪化とみなす
+  // 自己資本がプラスからマイナスに転じたのは、幅を見ずに悪化とみなす
   if (
     criterion.failsOnNegativeEquity &&
     now.negativeEquity &&
@@ -89,7 +120,12 @@ function worseThanPrevious(
   const a = valueOf(now, criterion)
   const b = valueOf(previous, criterion)
   if (a === null || b === null) return null
-  return criterion.higherIsBetter ? a < b : a > b
+
+  // 悪化した幅。値が大きいほど良い項目は下がった分、悪い項目は上がった分
+  const drop = criterion.higherIsBetter ? b - a : a - b
+  if (drop < WORSENING_POINTS) return false
+  if (b <= 0) return true
+  return (drop / Math.abs(b)) * 100 >= WORSENING_RATIO_PERCENT
 }
 
 function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
@@ -100,6 +136,8 @@ function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
     thresholdLabel: criterion.thresholdLabel,
     status: 'no_data',
     firstPeriodEnd: null,
+    firstPeriodValue: null,
+    firstPeriodPrevious: null,
     latest: valueOf(periods[last].values, criterion),
     previous: valueOf(periods[last - 1].values, criterion),
   }
@@ -123,6 +161,8 @@ function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
       ...base,
       status: i === last ? 'first_period' : 'consider_sell',
       firstPeriodEnd: periods[i].fiscalPeriodEnd,
+      firstPeriodValue: valueOf(periods[i].values, criterion),
+      firstPeriodPrevious: valueOf(periods[i - 1].values, criterion),
     }
   }
   return { ...base, status: 'ok' }
@@ -134,6 +174,7 @@ function judgeItem(criterion: Criterion, periods: SellPeriod[]): SellItem {
  * 項目ごとに「前の期より悪化して基準を下回った期（1 期目）」を探し、その状態が次の期も
  * 続いていれば consider_sell（売りを検討する）とする。2 期目にはさらなる悪化を求めない。
  * 比べる前の期が無い（1 期しか無い）ときは判定しない。
+ * 悪化とみなす幅には下限がある（WORSENING_POINTS / WORSENING_RATIO_PERCENT）。
  *
  * consider_sell でも売ると決めるものではない。含み益があれば売った時点で税が確定するため、
  * 売るかどうかは利用者が決める（ADR 0023）。
@@ -157,6 +198,8 @@ export function judgeSellSignal(input: {
         thresholdLabel: criterion.thresholdLabel,
         status: 'no_data' as const,
         firstPeriodEnd: null,
+        firstPeriodValue: null,
+        firstPeriodPrevious: null,
         latest: periods.length > 0 ? valueOf(periods[0].values, criterion) : null,
         previous: null,
       })),
