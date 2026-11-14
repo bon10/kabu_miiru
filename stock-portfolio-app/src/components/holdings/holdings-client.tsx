@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,13 +50,10 @@ import { UNSET_SECTOR } from '@/lib/holdings-filter'
 import { requestPriceUpdate } from '@/lib/price-update'
 import { NewStockDialog } from '@/components/stocks/new-stock-dialog'
 import {
-  FundamentalBrokenBadge,
-  FundamentalStatusIcon,
-  STATUS_LABEL,
+  SELL_STATUS_LABEL,
   type FundamentalCheckRow,
 } from '@/components/stocks/fundamental-check-card'
-import type { CheckStatus } from '@/lib/fundamental-check'
-import { countCheckStatuses } from '@/lib/fundamental-check-summary'
+import { countSellStatuses } from '@/lib/fundamental-check-summary'
 
 // 保有一覧ページ。ユビキタス言語: docs/2-domain/ubiquitous-language.md
 //   - デフォルトは「保有」(sharesHeld > 0) のみ表示。
@@ -124,10 +121,6 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
-// 基準チェック（ADR 0021）の銘柄ごとの判定。銘柄名セルの「基準割れ」の印に使う。
-// 行のコンポーネントを何段も通して渡さないよう、コンテキストで配る
-const FundamentalStatusContext = createContext<Map<number, CheckStatus>>(new Map())
-
 const profitColor = (value: number) =>
   value >= 0 ? 'text-green-600' : 'text-red-600'
 
@@ -147,7 +140,6 @@ function StockNameCell({
   onUpdated: () => void
 }) {
   const [isUpdating, setIsUpdating] = useState(false)
-  const fundamentalStatus = useContext(FundamentalStatusContext).get(holding.id)
 
   const handleUpdate = async () => {
     setIsUpdating(true)
@@ -165,8 +157,6 @@ function StockNameCell({
     // 銘柄名だけは折り返してよいが、1〜2 文字ずつの縦長にならない幅を確保する
     <TableCell className="min-w-[12rem]">
       <div className="flex items-center gap-2">
-        {/* 基準チェックの印は銘柄名より前に置く。印が無い銘柄も同じ幅を空けるので名前の位置はずれない */}
-        <FundamentalStatusIcon status={fundamentalStatus} />
         <Link
           href={`/stocks/${holding.id}`}
           className="font-medium hover:underline"
@@ -181,7 +171,6 @@ function StockNameCell({
             価格更新失敗
           </Badge>
         )}
-        <FundamentalBrokenBadge status={fundamentalStatus} />
         <Button
           variant="ghost"
           size="sm"
@@ -460,13 +449,9 @@ export default function HoldingsClient() {
     '/api/fundamental-checks',
     fetcher
   )
-  const fundamentalStatus = useMemo(
-    () => new Map((checks?.data ?? []).map((c) => [c.stockId, c.check.status])),
-    [checks]
-  )
-  // 要約バーの件数。基準割れ以外は行に印を出さないため、ここでしか見えない（ADR 0021）
+  // 要約バーの件数。行ごとの印は出さないため、保有一覧ではここでしか見えない（ADR 0023）
   const fundamentalCounts = useMemo(
-    () => countCheckStatuses((checks?.data ?? []).map((c) => c.check)),
+    () => countSellStatuses((checks?.data ?? []).map((c) => c.sell)),
     [checks]
   )
   const hasFundamentalChecks = (checks?.data.length ?? 0) > 0
@@ -574,28 +559,28 @@ export default function HoldingsClient() {
         </div>
       </div>
 
-      {/* 基準チェックの要約（ADR 0021）。保有の 7 割が購入時から未達になりうるため、
-          行ごとの印は基準割れだけにして、件数はここにまとめる。内訳は基準チェック一覧で見る */}
+      {/* 売りの判定の要約（ADR 0023）。半数近くの銘柄に印が付きうるため、行ごとの印は
+          出さず、件数だけここにまとめる。どの銘柄かは基準チェック一覧で見る */}
       {hasFundamentalChecks && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/40 px-5 py-3">
           <span className="flex items-baseline gap-1.5">
             <span className="text-sm font-semibold text-amber-700">
-              {STATUS_LABEL.broken}
+              {SELL_STATUS_LABEL.consider_sell}
             </span>
             <span className="text-xl font-bold text-amber-700">
-              {fundamentalCounts.broken}
+              {fundamentalCounts.consider_sell}
             </span>
             <span className="text-sm text-amber-700">件</span>
           </span>
           <span className="flex items-baseline gap-1.5">
-            <span className="text-sm text-muted-foreground">{STATUS_LABEL.unmet}</span>
-            <span className="text-xl font-bold">{fundamentalCounts.unmet}</span>
+            <span className="text-sm text-muted-foreground">{SELL_STATUS_LABEL.first_period}</span>
+            <span className="text-xl font-bold">{fundamentalCounts.first_period}</span>
             <span className="text-sm text-muted-foreground">件</span>
           </span>
           <span className="flex items-baseline gap-1.5">
-            <span className="text-sm text-green-700">{STATUS_LABEL.ok}</span>
-            <span className="text-xl font-bold text-green-700">{fundamentalCounts.ok}</span>
-            <span className="text-sm text-green-700">件</span>
+            <span className="text-sm text-blue-700">{SELL_STATUS_LABEL.ok}</span>
+            <span className="text-xl font-bold text-blue-700">{fundamentalCounts.ok}</span>
+            <span className="text-sm text-blue-700">件</span>
           </span>
           <Link
             href="/fundamental-checks"
@@ -771,10 +756,5 @@ export default function HoldingsClient() {
     </div>
   )
 
-  // 銘柄名セル（StockNameCell）が基準チェックの判定を読めるよう、ページ全体を包む
-  return (
-    <FundamentalStatusContext.Provider value={fundamentalStatus}>
-      {page}
-    </FundamentalStatusContext.Provider>
-  )
+  return page
 }

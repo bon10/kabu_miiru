@@ -1,76 +1,81 @@
 import { describe, expect, it } from 'vitest'
-import type { CheckItem, FundamentalCheck } from '@/lib/fundamental-check'
 import {
-  countCheckStatuses,
-  countUnmetItems,
-  isUnmetItem,
+  countSellStatuses,
+  countTriggeredItems,
+  isTriggeredItem,
 } from '@/lib/fundamental-check-summary'
+import type { SellItem, SellStatus } from '@/lib/sell-signal'
 
-function item(
-  key: CheckItem['key'],
-  label: string,
-  status: CheckItem['status'],
-): CheckItem {
-  return { key, label, thresholdLabel: '', current: null, purchase: null, status }
-}
+const item = (
+  key: SellItem['key'],
+  status: SellItem['status'],
+  label = key === 'roe' ? 'ROE' : key === 'equityRatio' ? '自己資本比率' : '有利子負債倍率',
+): SellItem => ({
+  key,
+  label,
+  thresholdLabel: '',
+  status,
+  firstPeriodEnd: null,
+  latest: null,
+  previous: null,
+})
 
-function check(status: FundamentalCheck['status'], items: CheckItem[]): FundamentalCheck {
-  return { status, items, notes: [] }
-}
+const signal = (status: SellStatus, items: SellItem[] = []) => ({ status, items })
 
-describe('isUnmetItem', () => {
-  it('基準割れと購入時から未達を「届いていない」とみなす', () => {
-    expect(isUnmetItem(item('roe', 'ROE', 'broken'))).toBe(true)
-    expect(isUnmetItem(item('roe', 'ROE', 'unmet_since_purchase'))).toBe(true)
+describe('isTriggeredItem', () => {
+  it('1 期目と 2 期続いているものを引き金とみなす', () => {
+    expect(isTriggeredItem(item('roe', 'first_period'))).toBe(true)
+    expect(isTriggeredItem(item('roe', 'consider_sell'))).toBe(true)
   })
 
-  it('満たしている項目とデータなしの項目は含めない', () => {
-    expect(isUnmetItem(item('roe', 'ROE', 'ok'))).toBe(false)
-    expect(isUnmetItem(item('roe', 'ROE', 'no_data'))).toBe(false)
+  it('引き金なしとデータなしは含めない', () => {
+    expect(isTriggeredItem(item('roe', 'ok'))).toBe(false)
+    expect(isTriggeredItem(item('roe', 'no_data'))).toBe(false)
   })
 })
 
-describe('countCheckStatuses', () => {
-  it('判定ごとの件数を数え、無い判定は 0 にする', () => {
-    const counts = countCheckStatuses([
-      check('broken', []),
-      check('unmet', []),
-      check('unmet', []),
-      check('not_applicable', []),
+describe('countSellStatuses', () => {
+  it('判定ごとに数える', () => {
+    const counts = countSellStatuses([
+      signal('consider_sell'),
+      signal('consider_sell'),
+      signal('first_period'),
+      signal('ok'),
+      signal('not_applicable'),
     ])
-
     expect(counts).toEqual({
-      ok: 0,
-      broken: 1,
-      unmet: 2,
+      consider_sell: 2,
+      first_period: 1,
+      ok: 1,
       no_data: 0,
       not_applicable: 1,
     })
   })
+
+  it('1 件も無い判定も 0 で返す', () => {
+    expect(countSellStatuses([])).toEqual({
+      consider_sell: 0,
+      first_period: 0,
+      ok: 0,
+      no_data: 0,
+      not_applicable: 0,
+    })
+  })
 })
 
-describe('countUnmetItems', () => {
-  it('届いていない項目を項目ごとに数え、多い順に並べる', () => {
-    const counts = countUnmetItems([
-      check('unmet', [
-        item('roe', 'ROE', 'unmet_since_purchase'),
-        item('fcfYield', 'FCF利回り', 'unmet_since_purchase'),
-        item('trend', '200日線', 'ok'),
-      ]),
-      check('broken', [
-        item('fcfYield', 'FCF利回り', 'broken'),
-        item('trend', '200日線', 'no_data'),
-      ]),
-      check('ok', [item('roe', 'ROE', 'ok')]),
+describe('countTriggeredItems', () => {
+  it('引き金になっている項目を多い順に数える', () => {
+    const counts = countTriggeredItems([
+      signal('consider_sell', [item('roe', 'consider_sell'), item('debtToEquity', 'ok')]),
+      signal('first_period', [item('roe', 'first_period'), item('debtToEquity', 'first_period')]),
     ])
-
     expect(counts).toEqual([
-      { key: 'fcfYield', label: 'FCF利回り', count: 2 },
-      { key: 'roe', label: 'ROE', count: 1 },
+      { key: 'roe', label: 'ROE', count: 2 },
+      { key: 'debtToEquity', label: '有利子負債倍率', count: 1 },
     ])
   })
 
-  it('届いていない項目が無ければ空にする', () => {
-    expect(countUnmetItems([check('ok', [item('roe', 'ROE', 'ok')])])).toEqual([])
+  it('引き金が無ければ空', () => {
+    expect(countTriggeredItems([signal('ok', [item('roe', 'ok')])])).toEqual([])
   })
 })

@@ -4,8 +4,8 @@ import { currencyOfMarket } from '@/lib/currency'
 import { saveDailyCloses } from '@/lib/daily-price'
 import { addDays, dateKeyOf, formatDateKey, toDateKey } from '@/lib/date-key'
 import {
-  checkFundamentals,
-  type FundamentalCheck,
+  fundamentalValues,
+  type FundamentalValues,
   type IndicatorValues,
 } from '@/lib/fundamental-check'
 import {
@@ -317,8 +317,9 @@ export interface FundamentalCheckRow {
   fundamentalFetchedAt: Date | null
   // 判定に使った購入時の指標。無ければ null
   snapshot: { recordedOn: Date; isCheckStart: boolean } | null
-  check: FundamentalCheck
-  // 売りの判定（ADR 0023）。基準チェックとは比べる相手が違う（購入時ではなく前の通期決算）
+  // 指標の値と、今それが基準を満たすか。銘柄をどうするかの判定は持たない
+  values: FundamentalValues
+  // 銘柄の判定はこれひとつ（ADR 0023）。前の通期決算と比べる
   sell: SellSignal
 }
 
@@ -341,7 +342,10 @@ function indicatorsOfSnapshot(s: FundamentalSnapshot): IndicatorValues {
  *
  * 今の値は、財務の最新値と Stock.currentPrice（最後に価格更新した時点の値）から計算する。
  * 200日線は日次終値（DailyPrice）から計算する。購入時の値は、最新の購入時の指標を使う
- * （売りは銘柄単位で考えるため、直近の買いのときの値と比べる）。
+ * （比べるための数字として出すだけで、判定には使わない）。
+ *
+ * 銘柄の判定は sell（ADR 0023）ひとつ。values は項目ごとの数字と「今基準を満たすか」で、
+ * 銘柄をどうするかは言わない。
  */
 export async function loadFundamentalChecks(
   options: { stockIds?: number[] } = {},
@@ -404,7 +408,7 @@ export async function loadFundamentalChecks(
       snapshot: latestSnapshot
         ? { recordedOn: latestSnapshot.recordedOn, isCheckStart: latestSnapshot.isCheckStart }
         : null,
-      check: checkFundamentals({
+      values: fundamentalValues({
         market: s.market,
         sector: s.marketSector,
         current,

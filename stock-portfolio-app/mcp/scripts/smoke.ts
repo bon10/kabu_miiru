@@ -72,7 +72,9 @@ const checks = await client.callTool({
 })
 assert.ok(!checks.isError, `check failed: ${JSON.stringify(checks.content)}`)
 const { counts } = checks.structuredContent as { counts: Record<string, number> }
-assert.ok(typeof counts.broken === 'number', '判定ごとの件数を返す')
+// 銘柄の判定は売りの判定ひとつ（ADR 0023）
+assert.ok(typeof counts.consider_sell === 'number', '判定ごとの件数を返す')
+assert.ok(typeof counts.first_period === 'number', '判定ごとの件数を返す')
 
 await client.close()
 console.error('Smoke test passed')

@@ -1,13 +1,15 @@
 import { ETF_SECTOR } from '@/lib/sector'
 
-// 基準チェック：保有銘柄が、銘柄選びのスキル（value-stock-screener）と同じ基準を
-// 今も満たしているかを判定する（ADR 0021）。
+// 基準チェックの「値」：保有銘柄の指標と、今それが基準を満たすかを出す。
 //
-// しきい値は固定で、スキルの初期値と同じ。スキルは候補が残らないと条件を緩めて選ぶが、
-// 緩めた値は記録しない。代わりに購入時の指標と比べて、
-//   - 買ったときは満たしていて、今は下回っている → 基準割れ（売りを検討するサイン）
-//   - 買ったときから下回っている               → 購入時から未達（お知らせだけ）
-// を見分ける。安値圏は買うタイミングの条件なので、ここでは見ない。
+// しきい値は固定で、銘柄選びのスキル（value-stock-screener）の初期値と同じ（ADR 0021）。
+//
+// **銘柄を「どうするか」の判定はここでは出さない。** 判定は売りの判定ひとつに寄せた
+// （judgeSellSignal。ADR 0023）。以前は購入時の指標と比べて「基準割れ」「購入時から未達」を
+// 出していたが、画面とロジックに判定が 2 つあると、どちらに従えばよいか分からなくなる。
+// 購入時の値は、比べるための数字として残す（判定には使わない）。
+//
+// 安値圏は買うタイミングの条件なので、ここでは見ない。
 
 // 指標の値。比率はパーセントの値（12% なら 12）。ADR 0020
 export interface IndicatorValues {
@@ -21,7 +23,7 @@ export interface IndicatorValues {
   negativeEquity: boolean
 }
 
-type CriterionKey = 'roe' | 'fcfYield' | 'equityRatio' | 'debtToEquity' | 'altmanZ' | 'trend'
+export type CriterionKey = 'roe' | 'fcfYield' | 'equityRatio' | 'debtToEquity' | 'altmanZ' | 'trend'
 
 export interface Criterion {
   key: CriterionKey
@@ -82,70 +84,66 @@ function criteriaFor(market: string, current: IndicatorValues): Criterion[] {
   return [CRITERIA.roe, CRITERIA.fcfYield, ...safety, CRITERIA.trend]
 }
 
-export type CheckItemStatus = 'ok' | 'broken' | 'unmet_since_purchase' | 'no_data'
-
-export interface CheckItem {
+// 項目ごとの値と、今それが基準を満たすか。買ったときと比べる判定は持たない
+export interface FundamentalValueItem {
   key: CriterionKey
   label: string
   thresholdLabel: string
   current: number | null
+  // 購入時（またはチェック開始日）の値。比べるための数字で、判定には使わない
   purchase: number | null
-  status: CheckItemStatus
+  // 今の値が基準を満たすか。値が無ければ null（判定できない）
+  meetsNow: boolean | null
 }
-
-// broken：基準割れの項目が 1 つ以上。unmet：基準割れは無いが購入時から未達の項目がある
-export type CheckStatus = 'ok' | 'broken' | 'unmet' | 'no_data' | 'not_applicable'
 
 export type CheckNote = 'negativeEquity' | 'financialSector' | 'realEstateSector'
 
-export interface FundamentalCheck {
-  status: CheckStatus
-  items: CheckItem[]
+export interface FundamentalValues {
+  // ETF は財務の値が無いので項目を出さない
+  applicable: boolean
+  // 財務の値がまだ無い（価格更新で取りに行く）
+  hasData: boolean
+  items: FundamentalValueItem[]
   notes: CheckNote[]
 }
 
 // 注記の文言は画面からも読むため utils.ts の FUNDAMENTAL_CHECK_NOTE_TEXT に置く
 // （このファイルは sector.ts 経由で prisma を読み込み、クライアントに含められない）
 
-export function checkFundamentals(input: {
+/**
+ * 保有銘柄の指標と、今それが基準を満たすかを出す。
+ *
+ * 銘柄をどうするかの判定は返さない（売りの判定に寄せた。ADR 0023）。
+ * 項目ごとの meetsNow は「今の値が基準を満たすか」という事実だけで、
+ * 買ったあとに下がったのかどうかは見ない。
+ */
+export function fundamentalValues(input: {
   market: string
   sector: string | null
   current: IndicatorValues | null
   purchase: IndicatorValues | null
-}): FundamentalCheck {
+}): FundamentalValues {
   const { market, sector, current, purchase } = input
-  if (sector === ETF_SECTOR) return { status: 'not_applicable', items: [], notes: [] }
+  if (sector === ETF_SECTOR) {
+    return { applicable: false, hasData: false, items: [], notes: [] }
+  }
 
   const notes: CheckNote[] = []
   if (sector === 'Financial Services') notes.push('financialSector')
   if (sector === 'Real Estate') notes.push('realEstateSector')
-  if (!current) return { status: 'no_data', items: [], notes }
+  if (!current) return { applicable: true, hasData: false, items: [], notes }
   if (current.negativeEquity) notes.push('negativeEquity')
 
-  const items = criteriaFor(market, current).map((criterion): CheckItem => {
-    const now = passesOf(criterion, current)
-    const status: CheckItemStatus =
-      now === null
-        ? 'no_data'
-        : now
-          ? 'ok'
-          : passesOf(criterion, purchase) === false
-            ? 'unmet_since_purchase'
-            : 'broken'
-    return {
+  const items = criteriaFor(market, current).map(
+    (criterion): FundamentalValueItem => ({
       key: criterion.key,
       label: criterion.label,
       thresholdLabel: criterion.thresholdLabel,
       current: valueOf(current, criterion.key),
       purchase: valueOf(purchase, criterion.key),
-      status,
-    }
-  })
+      meetsNow: passesOf(criterion, current),
+    }),
+  )
 
-  const status: CheckStatus = items.some((i) => i.status === 'broken')
-    ? 'broken'
-    : items.some((i) => i.status === 'unmet_since_purchase')
-      ? 'unmet'
-      : 'ok'
-  return { status, items, notes }
+  return { applicable: true, hasData: true, items, notes }
 }
