@@ -65,4 +65,5 @@ Transaction を集約する以上、集計値は**取引を並べる順序に依
 - [ADR 0005 米国株の円換算](0005-us-stock-jpy-conversion.md)（Transaction を持たない保有の実例）
 - [ADR 0007 受取配当額は登録時の 1株配当 × 保有株数で確定](0007-dividend-receipt-amount-from-per-share.md)（本 ADR の派生キャッシュ `Stock.sharesHeld` を係数として参照する。ただし受取配当の総額は登録時点で凍結し再計算しない点で、本 ADR の「派生値は再計算」とは方針が分かれる）
 - [ADR 0008 移行データの保有は初期残高 Transaction で表す](0008-initial-balance-transaction.md)（本 ADR の見直しトリガー発火を受けた決定）
+- [ADR 0024 株式分割・併合は取引とは別の記録として持つ](0024-stock-split-as-separate-record.md)（Source of Truth に `StockSplit` を足す。再生の途中で分割日に保有株数を換算する）
 - [ADR 0009 ポートフォリオ推移は日次終値から再構成](0009-portfolio-timeline-from-daily-close.md)（本 ADR の「読み取り時に再構成する」考え方を時系列へ適用）

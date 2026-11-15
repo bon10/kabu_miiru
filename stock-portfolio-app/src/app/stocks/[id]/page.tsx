@@ -10,6 +10,7 @@ import {
   Minus,
   Coins,
   RefreshCw,
+  Split,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
@@ -19,6 +20,11 @@ import { Badge } from '@/components/ui/badge'
 import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
 import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
 import { FundamentalCheckCard } from '@/components/stocks/fundamental-check-card'
+import {
+  StockSplitCandidateBanner,
+  StockSplitFormDialog,
+  StockSplitHistoryCard,
+} from '@/components/stocks/stock-split'
 import {
   Table,
   TableBody,
@@ -112,6 +118,7 @@ export default function StockDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
   const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false)
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
 
   // 受取配当ダイアログに渡す銘柄候補。配列リテラルを毎レンダー生成すると
@@ -239,7 +246,8 @@ export default function StockDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* 操作のボタンが銘柄名の横に収まらない幅では、銘柄名を折り返さずボタンの列を下の段へ回す */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline">
             <Link href="/holdings">
@@ -264,7 +272,7 @@ export default function StockDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             onClick={() => {
@@ -289,6 +297,10 @@ export default function StockDetailPage() {
           <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
             <Coins className="h-4 w-4 mr-2" />
             受取配当を追加
+          </Button>
+          <Button variant="outline" onClick={() => setSplitDialogOpen(true)}>
+            <Split className="h-4 w-4 mr-2" />
+            株式分割
           </Button>
           <Button
             variant="outline"
@@ -334,6 +346,15 @@ export default function StockDetailPage() {
         defaultStockId={stock.id}
         onSubmitted={() => fetchStock()}
       />
+
+      <StockSplitFormDialog
+        open={splitDialogOpen}
+        onOpenChange={setSplitDialogOpen}
+        stockId={stock.id}
+        onChanged={() => fetchStock()}
+      />
+
+      <StockSplitCandidateBanner stockId={stock.id} onChanged={() => fetchStock()} />
 
       {/* 基本情報カード */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -562,6 +583,8 @@ export default function StockDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <StockSplitHistoryCard stockId={stock.id} onChanged={() => fetchStock()} />
 
       {/* 受取配当履歴 */}
       {stock.dividendHistory.length > 0 && (

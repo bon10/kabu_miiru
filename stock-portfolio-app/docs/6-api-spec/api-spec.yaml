@@ -231,6 +231,185 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /stocks/{id}/splits:
+    get:
+      tags: [stocks]
+      summary: 株式分割・併合の一覧取得
+      description: 指定した銘柄に登録済みの株式分割・併合を分割日の昇順で返す（ADR 0024）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      splits:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/StockSplit'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [stocks]
+      summary: 株式分割・併合の登録
+      description: |
+        株式分割・併合を登録し、保有株数・平均取得単価を再計算する（ADR 0024）。
+        取引は約定時点の株数・単価のまま変えない。
+        その銘柄に分割日より前の日次終値があれば、Yahoo Finance から取り直して置き換える。
+        取り直せなかったときは分割を登録しない（502）。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [splitDate, fromShares, toShares]
+              properties:
+                splitDate:
+                  type: string
+                  format: date
+                  description: 分割日（権利落ち日）。今日以前
+                fromShares:
+                  type: number
+                  description: 分割前の株数（1 株 → 2 株なら 1）
+                toShares:
+                  type: number
+                  description: 分割後の株数（1 株 → 2 株なら 2）
+                memo:
+                  type: string
+      responses:
+        '201':
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      split:
+                        $ref: '#/components/schemas/StockSplit'
+                      replacedCloseCount:
+                        type: integer
+                        description: 置き換えた日次終値の件数
+        '400':
+          description: 入力が不正（BAD_REQUEST）、または同じ分割日の分割が登録済み（DUPLICATE_ENTRY）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: 分割日より前の日次終値を Yahoo Finance から取り直せなかった（PRICE_FETCH_FAILED）。分割は登録されない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stocks/{id}/splits/{splitId}:
+    delete:
+      tags: [stocks]
+      summary: 株式分割・併合の削除
+      description: 登録済みの株式分割・併合を削除し、保有株数・平均取得単価を再計算する（ADR 0024）。日次終値は変えない
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: splitId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+        '403':
+          description: 取引履歴の編集・削除が設定で許可されていない（FORBIDDEN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /stocks/{id}/splits/candidates:
+    get:
+      tags: [stocks]
+      summary: 未登録の株式分割・併合の候補取得
+      description: |
+        Yahoo Finance が返す分割のうち、その銘柄の最初の取引より後で、まだ登録していないものを返す（ADR 0024）。
+        登録はしない。Yahoo Finance から取れなかったときも 200 で候補なしを返し、理由を fetchError に入れる。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      candidates:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            splitDate:
+                              type: string
+                              format: date
+                            fromShares:
+                              type: number
+                            toShares:
+                              type: number
+                      fetchError:
+                        type: string
+                        nullable: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   # ポートフォリオ分析
   /portfolio/composition:
     get:
@@ -1569,6 +1748,23 @@ paths:
 
 components:
   schemas:
+    StockSplit:
+      type: object
+      description: 株式分割・併合（ADR 0024）。分割前 fromShares 株が分割後 toShares 株になる
+      properties:
+        id:
+          type: integer
+        splitDate:
+          type: string
+          format: date
+          description: 分割日（権利落ち日）
+        fromShares:
+          type: number
+        toShares:
+          type: number
+        memo:
+          type: string
+          nullable: true
     ApiResponse:
       type: object
       properties:

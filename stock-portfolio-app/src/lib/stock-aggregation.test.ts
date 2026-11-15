@@ -209,3 +209,77 @@ describe('replayTransactions', () => {
     })
   })
 })
+
+// 株式分割・併合（ADR 0024）。取引は約定時点の株数・単価のまま残し、
+// 分割日に保有株数だけを比率で換算する。取得原価は分割では動かない。
+describe('replayTransactions（株式分割）', () => {
+  it('分割日より前の保有は比率ぶん増え、取得原価は変わらない', () => {
+    const r = replayTransactions(
+      [buy({ shares: 2, pricePerShare: 6000, transactionDate: d('2025-09-10') })],
+      [{ splitDate: d('2025-11-27'), ratio: 2 }],
+    )
+    expect(r.shares).toBe(4)
+    expect(r.costBasis).toBe(12000)
+    // 平均取得単価は半分になる
+    expect(r.costBasis / r.shares).toBe(3000)
+  })
+
+  it('分割日当日の取引は分割後の株数として扱い、換算しない', () => {
+    const r = replayTransactions(
+      [
+        buy({ id: 1, shares: 2, pricePerShare: 6000, transactionDate: d('2025-09-10') }),
+        buy({ id: 2, shares: 1, pricePerShare: 3100, transactionDate: d('2025-11-27') }),
+      ],
+      [{ splitDate: d('2025-11-27'), ratio: 2 }],
+    )
+    expect(r.shares).toBe(5)
+    expect(r.costBasis).toBe(12000 + 3100)
+  })
+
+  it('分割後の売却は、換算後の平均取得単価で実現損益を計算する', () => {
+    const r = replayTransactions(
+      [
+        buy({ id: 1, shares: 2, pricePerShare: 6000, transactionDate: d('2025-09-10') }),
+        sell({ id: 2, shares: 1, pricePerShare: 3500, transactionDate: d('2026-01-10') }),
+      ],
+      [{ splitDate: d('2025-11-27'), ratio: 2 }],
+    )
+    // 換算後の平均取得単価 3000。(3500 - 3000) × 1 = 500
+    expect(r.realizedProfitLoss).toBe(500)
+    expect(r.shares).toBe(3)
+    expect(r.costBasis).toBe(9000)
+  })
+
+  it('分割前に売り切っていれば、分割は何も変えない', () => {
+    const r = replayTransactions(
+      [
+        buy({ id: 1, shares: 2, pricePerShare: 6000, transactionDate: d('2025-09-10') }),
+        sell({ id: 2, shares: 2, pricePerShare: 7000, transactionDate: d('2025-10-01') }),
+      ],
+      [{ splitDate: d('2025-11-27'), ratio: 2 }],
+    )
+    expect(r.shares).toBe(0)
+    expect(r.costBasis).toBe(0)
+    expect(r.realizedProfitLoss).toBe(2000)
+  })
+
+  it('併合は比率が 1 未満で、保有株数が減る', () => {
+    const r = replayTransactions(
+      [buy({ shares: 100, pricePerShare: 100, transactionDate: d('2025-09-10') })],
+      [{ splitDate: d('2025-11-27'), ratio: 1 / 5 }],
+    )
+    expect(r.shares).toBe(20)
+    expect(r.costBasis).toBe(10000)
+  })
+
+  it('複数の分割は日付順に重ねて換算する', () => {
+    const r = replayTransactions(
+      [buy({ shares: 1, pricePerShare: 6000, transactionDate: d('2025-01-01') })],
+      [
+        { splitDate: d('2025-06-01'), ratio: 2 },
+        { splitDate: d('2025-12-01'), ratio: 3 },
+      ],
+    )
+    expect(r.shares).toBe(6)
+  })
+})

@@ -125,3 +125,26 @@ describe('planInitialBalance', () => {
     expect(p.baselineDate).toEqual(day('2025-01-01'))
   })
 })
+
+// 株式分割（ADR 0024）。分割で増えた株数は「取引で説明できない保有」ではない。
+describe('株式分割がある銘柄の初期残高', () => {
+  const split = { splitDate: day('2025-11-27'), ratio: 2 }
+
+  it('replayShares は分割日より前の保有を比率で換算する', () => {
+    expect(replayShares([buy(2, '2025-09-10')], [split])).toBe(4)
+  })
+
+  it('分割で説明できる保有には初期残高を作らない', () => {
+    const p = planInitialBalance({
+      id: 1,
+      code: '8473',
+      stockName: 'SBI',
+      sharesHeld: 4,
+      avgAcquisitionPrice: 3000,
+      purchaseDate: null,
+      transactions: [buy(2, '2025-09-10')],
+      splits: [split],
+    })
+    expect(p.kind).toBe('skip')
+  })
+})

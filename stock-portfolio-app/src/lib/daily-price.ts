@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { toDateKey } from '@/lib/date-key'
 import { getApiSymbol } from '@/lib/utils'
@@ -191,6 +192,40 @@ export async function saveDailyCloses(stockId: number, closes: DailyClose[]): Pr
   const created = await prisma.dailyPrice.createMany({
     data: toCreate,
     skipDuplicates: true,
+  })
+  return created.count
+}
+
+// 取得済みの日次終値のうち before より前の日のぶんで、保存済みの行を置き換える。
+// 置き換えた件数を返す。
+//
+// saveDailyCloses が既存の行を上書きしないのに対し、こちらは上書きする。株式分割を
+// 登録したとき専用（ADR 0024）。分割より前に保存した日次終値は分割前の株数の基準の
+// ままで、分割後に Yahoo が返す値（現在の株数の基準）と混ざると、推移の評価額と
+// 200日線が分割日で跳ぶ。
+// Yahoo が返した最初の日から before の前日までは、Yahoo が返さなかった日の行も消す。
+// 残すと分割前の基準の値がその日だけ混ざるため（消えた日は読み取り時に前営業日の
+// 終値で埋まる）。Yahoo が返した最初の日より前の行には触れない。
+export async function replaceDailyClosesBefore(
+  stockId: number,
+  closes: DailyClose[],
+  before: Date,
+  client: Prisma.TransactionClient,
+): Promise<number> {
+  const targets = closes.filter((c) => c.priceDate.getTime() < toDateKey(before).getTime())
+  if (targets.length === 0) return 0
+
+  await client.dailyPrice.deleteMany({
+    where: { stockId, priceDate: { gte: targets[0].priceDate, lt: toDateKey(before) } },
+  })
+  const created = await client.dailyPrice.createMany({
+    data: targets.map((c) => ({
+      stockId,
+      close: c.close,
+      priceDate: c.priceDate,
+      source: 'yahoo',
+      isFilled: false,
+    })),
   })
   return created.count
 }

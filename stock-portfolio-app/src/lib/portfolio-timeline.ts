@@ -3,7 +3,11 @@ import { addDays, formatDateKey, toDateKey } from '@/lib/date-key'
 import { getUsdJpyRateMap } from '@/lib/exchange-rate'
 import { isUsStock } from '@/lib/currency'
 import { resolveRange, type TimelineRange } from '@/lib/timeline-range'
-import { TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
+import {
+  SPLIT_REPLAY_ORDER,
+  TRANSACTION_REPLAY_ORDER,
+  toReplaySplit,
+} from '@/lib/stock-aggregation'
 import { netDividendAmount, toNullableNumber } from '@/lib/dividend'
 
 // ポートフォリオ推移の再構成（ADR 0009）。
@@ -103,8 +107,11 @@ export interface TimelineInput {
     netAmount: number | null
     currency: string
   }>
+  // 株式分割・併合（ADR 0024）。分割日の昇順。ratio は 分割後の株数 ÷ 分割前の株数
+  splits?: Array<{ stockId: number; splitDate: Date; ratio: number }>
   stocks: StockMeta[]
-  // 銘柄 ID → 暦日(getTime) → 終値（建値通貨）
+  // 銘柄 ID → 暦日(getTime) → 終値（建値通貨）。
+  // 過去の日の終値も、現在の株数の基準に換算済みの値であること（ADR 0024）
   closeMap: Map<number, Map<number, number>>
   // 暦日(getTime) → USD/JPY
   rateMap: Map<number, number>
@@ -125,6 +132,7 @@ export function warmupStartOf(baselineDate: Date): Date {
 // 取引・配当は日付の昇順に並んでいることを前提とする。
 export function computeTimeline(inputData: TimelineInput): TimelineResult {
   const { transactions, dividends, stocks, closeMap, rateMap, range } = inputData
+  const splits = inputData.splits ?? []
   const today = toDateKey(inputData.today)
 
   if (transactions.length === 0) {
@@ -155,6 +163,14 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
   // 取引・配当は日付順に並んでいるので、日を進めながら先頭から消費する
   let txIndex = 0
   let divIndex = 0
+  let splitIndex = 0
+  // その日より後に来る分割の比率を掛け合わせた値（銘柄ごと）。
+  // 日次終値は過去の日のぶんも現在の株数の基準に換算済みなので、評価額を出すときは
+  // その日の保有株数にこれを掛けて同じ基準に揃える（ADR 0024）。
+  const pendingSplitFactor = new Map<number, number>()
+  for (const split of splits) {
+    pendingSplitFactor.set(split.stockId, (pendingSplitFactor.get(split.stockId) ?? 1) * split.ratio)
+  }
   const heldShares = new Map<number, number>()
   const costBasis = new Map<number, number>()
   let realizedPLUsd = 0
@@ -175,6 +191,17 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
 
     // その日のレート。未取得日は直前の値を使う
     const rate = rateFill.next(rateMap.get(dayKey)).value
+
+    // その日までの分割を保有株数へ反映する。分割日当日の取引は分割後の株数で
+    // 約定しているため、取引より先に適用する。取得原価は分割では動かない（ADR 0024）
+    while (splitIndex < splits.length && toDateKey(splits[splitIndex].splitDate) <= day) {
+      const split = splits[splitIndex++]
+      heldShares.set(split.stockId, (heldShares.get(split.stockId) ?? 0) * split.ratio)
+      pendingSplitFactor.set(
+        split.stockId,
+        (pendingSplitFactor.get(split.stockId) ?? 1) / split.ratio,
+      )
+    }
 
     // その日までの取引を保有状態へ反映する（平均取得単価法）
     while (txIndex < transactions.length && toDateKey(transactions[txIndex].transactionDate) <= day) {
@@ -245,7 +272,8 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
         continue
       }
       if (close.isFilled) filledStockCount++
-      marketValue += shares * close.value * (factor ?? 0)
+      marketValue +=
+        shares * (pendingSplitFactor.get(stockId) ?? 1) * close.value * (factor ?? 0)
     }
 
     if (day >= rangeStart) {
@@ -277,8 +305,9 @@ export function computeTimeline(inputData: TimelineInput): TimelineResult {
 // DB から原資料を読み、computeTimeline に渡すだけのラッパー。
 // 計算は computeTimeline 側に集約してあるので、ここには読み出しの都合だけを置く。
 export async function buildPortfolioTimeline(range: TimelineRange): Promise<TimelineResult> {
-  const [transactions, dividends, stocks] = await Promise.all([
+  const [transactions, splits, dividends, stocks] = await Promise.all([
     prisma.transaction.findMany({ orderBy: TRANSACTION_REPLAY_ORDER }),
+    prisma.stockSplit.findMany({ orderBy: SPLIT_REPLAY_ORDER }),
     prisma.dividendHistory.findMany({ orderBy: { paymentDate: 'asc' } }),
     prisma.stock.findMany({ select: { id: true, code: true, stockName: true, market: true } }),
   ])
@@ -303,6 +332,7 @@ export async function buildPortfolioTimeline(range: TimelineRange): Promise<Time
       fee: Number(tx.fee),
       transactionDate: tx.transactionDate,
     })),
+    splits: splits.map((split) => ({ stockId: split.stockId, ...toReplaySplit(split) })),
     dividends: dividends.map((d) => ({
       paymentDate: d.paymentDate,
       dividendAmount: Number(d.dividendAmount),

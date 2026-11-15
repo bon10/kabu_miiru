@@ -7,20 +7,7 @@ import {
   recalculateStockAggregates,
   TransactionOrderError,
 } from '@/lib/stock-aggregation'
-import { ALLOW_TRANSACTION_EDIT, getBooleanSetting } from '@/lib/settings'
-
-// 取引履歴の編集・削除は設定フラグ（既定オフ）で許可されているときのみ受け付ける。
-// オフのときに直接 API を叩かれてもデータを守るためのサーバー側ガード。
-async function assertTransactionEditAllowed(): Promise<Response | null> {
-  const allowed = await getBooleanSetting(ALLOW_TRANSACTION_EDIT)
-  if (!allowed) {
-    return Response.json(
-      createErrorResponse('FORBIDDEN', '取引履歴の編集・削除は設定で許可されていません'),
-      { status: 403 },
-    )
-  }
-  return null
-}
+import { assertTransactionEditAllowed } from '@/lib/settings'
 
 export async function GET(
   _request: NextRequest,

@@ -40,6 +40,29 @@ export interface ReplayTransaction {
   transactionDate: Date
 }
 
+// 再生に必要な株式分割・併合の最小形（ADR 0024）。
+export interface ReplaySplit {
+  // 分割日（権利落ち日）。この日以降の取引は分割後の株数・単価で記録されている
+  splitDate: Date
+  // 分割後の株数 ÷ 分割前の株数。1 株 → 2 株の分割なら 2、5 株 → 1 株の併合なら 0.2
+  ratio: number
+}
+
+// 分割を再生するときの並び順。再生に関わるクエリはすべてこの順序を使う。
+export const SPLIT_REPLAY_ORDER = [
+  { splitDate: 'asc' },
+  { id: 'asc' },
+] as const satisfies Prisma.StockSplitOrderByWithRelationInput[]
+
+// StockSplit の行を再生用の形に落とす。
+export function toReplaySplit(row: {
+  splitDate: Date
+  fromShares: Prisma.Decimal | number
+  toShares: Prisma.Decimal | number
+}): ReplaySplit {
+  return { splitDate: row.splitDate, ratio: Number(row.toShares) / Number(row.fromShares) }
+}
+
 export interface ReplayResult {
   shares: number
   costBasis: number
@@ -55,8 +78,16 @@ export interface ReplayResult {
 }
 
 // 平均取得単価法で取引履歴を再生する（ADR 0003）。
-// DB に触れない純粋関数。日付順に並んでいることを前提とする。
-export function replayTransactions(transactions: ReplayTransaction[]): ReplayResult {
+// DB に触れない純粋関数。取引・分割とも日付順に並んでいることを前提とする。
+//
+// 分割は、分割日に保有株数だけを比率で換算する（ADR 0024）。取引は約定時点の
+// 株数・単価のまま保存してあり、分割で株主が払った金額は変わらないため、
+// 取得原価は動かさない。結果として平均取得単価が比率ぶん変わる。
+// 分割日当日の取引は分割後の株数で約定しているので、分割を先に適用する。
+export function replayTransactions(
+  transactions: ReplayTransaction[],
+  splits: ReplaySplit[] = [],
+): ReplayResult {
   let shares = 0
   let costBasis = 0
   let realizedProfitLoss = 0
@@ -65,7 +96,19 @@ export function replayTransactions(transactions: ReplayTransaction[]): ReplayRes
   let lastSaleDate: Date | null = null
   const orphanedSells: OrphanedSell[] = []
 
+  let splitIndex = 0
+  // through 以前の分割をまだ適用していなければ適用する。null なら残り全部
+  const applySplits = (through: Date | null) => {
+    while (
+      splitIndex < splits.length &&
+      (through === null || splits[splitIndex].splitDate.getTime() <= through.getTime())
+    ) {
+      shares *= splits[splitIndex++].ratio
+    }
+  }
+
   for (const tx of transactions) {
+    applySplits(tx.transactionDate)
     if (tx.transactionType === 'BUY') {
       costBasis += tx.shares * tx.pricePerShare + tx.fee
       shares += tx.shares
@@ -93,6 +136,8 @@ export function replayTransactions(transactions: ReplayTransaction[]): ReplayRes
       }
     }
   }
+  // 最後の取引より後の分割も、現在の保有株数には効く
+  applySplits(null)
 
   return {
     shares,
@@ -131,8 +176,8 @@ export function assertNoOrphanedSells(result: RecalculationResult): void {
   }
 }
 
-// 平均取得単価法で Transaction から Stock 集計値を再計算する。
-// Source of truth は Transaction（ADR 0003）。
+// 平均取得単価法で Transaction と StockSplit から Stock 集計値を再計算する。
+// Source of truth は Transaction（ADR 0003）と StockSplit（ADR 0024）。
 //
 // 戻り値の orphanedSells には、保有株数ゼロの時点に置かれていて集計に算入できなかった
 // SELL を列挙する。集計自体は残りの取引で最後まで実行するため、呼び出し側が
@@ -141,11 +186,15 @@ export async function recalculateStockAggregates(
   stockId: number,
   client: PrismaClientOrTx = prisma,
 ): Promise<RecalculationResult> {
-  const [stock, transactions] = await Promise.all([
+  const [stock, transactions, splits] = await Promise.all([
     client.stock.findUnique({ where: { id: stockId } }),
     client.transaction.findMany({
       where: { stockId },
       orderBy: TRANSACTION_REPLAY_ORDER,
+    }),
+    client.stockSplit.findMany({
+      where: { stockId },
+      orderBy: SPLIT_REPLAY_ORDER,
     }),
   ])
 
@@ -168,6 +217,7 @@ export async function recalculateStockAggregates(
       fee: Number(tx.fee),
       transactionDate: tx.transactionDate,
     })),
+    splits.map(toReplaySplit),
   )
 
   const avgAcquisitionPrice = shares > 0 ? costBasis / shares : 0
