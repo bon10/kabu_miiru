@@ -92,7 +92,8 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
   - 基本情報、保有情報、投資情報、配当情報、価格更新情報
 - **Transaction**: 売買・配当取引履歴
 - **PriceHistory**: 価格履歴（市場セッション対応、場中の値を含む）
-- **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）
+- **DailyPrice**: 日次終値（ポートフォリオ推移の原資料、`(stockId, priceDate)` ユニーク、ADR 0009）。過去の日のぶんも現在の株数の基準で持つ（ADR 0024）
+- **StockSplit**: 株式分割・併合（`(stockId, splitDate)` ユニーク、ADR 0024）。Transaction とともに保有株数・平均取得単価の Source of Truth。取引は約定時点の株数・単価のまま残し、再生の途中で分割日に保有株数を換算する
 - **ExchangeRate**: USD/JPY の日次レート（`rateDate` ユニーク、ADR 0005 / 0008）
 - **DividendHistory**: 受取配当。証券会社の配当明細 1 行を写す（数量・配当合計・税額合計・受取金額。集計は手取り基準、ADR 0015）
 - **StockFundamental**: 通期決算の値。銘柄 × 決算期で 1 行（`(stockId, fiscalPeriodEnd)` ユニーク、ADR 0023）。指標は保存せず、基準期（期末日が最大の行）から計算する（ADR 0020 / 0021）
@@ -109,6 +110,10 @@ pnpm test:watch             # 変更監視でループ実行（TDD用）
 - `GET /api/stocks/[id]` - 特定株式の詳細取得
 - `PUT /api/stocks/[id]` - 株式情報の更新
 - `DELETE /api/stocks/[id]` - 株式の削除
+- `GET /api/stocks/[id]/splits` - 登録済みの株式分割・併合の一覧（ADR 0024）
+- `POST /api/stocks/[id]/splits` - 株式分割・併合の登録。保有株数・平均取得単価を再計算し、分割日より前の日次終値を Yahoo から取り直して置き換える（取り直せなければ登録しない）
+- `DELETE /api/stocks/[id]/splits/[splitId]` - 株式分割・併合の削除（取引履歴の編集・削除と同じ設定で許可）
+- `GET /api/stocks/[id]/splits/candidates` - Yahoo が返す未登録の分割の候補（登録はしない）
 
 #### 価格管理 (`/api/prices`)
 - `POST /api/prices/update` - 株価の更新（一括・個別対応）

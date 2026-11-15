@@ -374,3 +374,69 @@ describe('computeTimeline', () => {
     expect(r.points[r.points.length - 1].cumulativeDividends).toBe(800)
   })
 })
+
+// 株式分割・併合（ADR 0024）。
+// 日次終値は Yahoo が過去ぶんも「現在の株数の基準」に直して返す値なので、
+// 分割日より前の日は、保有株数を現在の基準に換算してから終値を掛ける。
+describe('computeTimeline（株式分割）', () => {
+  // 1 → 2 の分割。分割前の実際の株価は 6000 だが、保存されている終値は換算済みの 3000
+  const splitInput = (over: Partial<TimelineInput> = {}) =>
+    input({
+      transactions: [buy(1, '2025-01-01', 2, 6000)],
+      splits: [{ stockId: 1, splitDate: day('2025-01-03'), ratio: 2 }],
+      closeMap: closes(1, {
+        '2025-01-01': 3000,
+        '2025-01-02': 3100,
+        '2025-01-03': 3200,
+        '2025-01-04': 3300,
+      }),
+      today: day('2025-01-04'),
+      ...over,
+    })
+
+  it('分割日より前の評価額は、現在の基準に換算した株数 × 終値になる', () => {
+    const r = computeTimeline(splitInput())
+    // 2 株 × 2（分割ぶん）× 3000
+    expect(r.points[0].marketValue).toBe(12000)
+    expect(r.points[1].marketValue).toBe(12400)
+  })
+
+  it('分割日以降の評価額は 分割後の株数 × 終値 になり、分割日に跳ばない', () => {
+    const r = computeTimeline(splitInput())
+    expect(r.points[2].marketValue).toBe(4 * 3200)
+    expect(r.points[3].marketValue).toBe(4 * 3300)
+  })
+
+  it('投資元本は分割で変わらない', () => {
+    const r = computeTimeline(splitInput())
+    expect(r.points.map((p) => p.investedPrincipal)).toEqual([12000, 12000, 12000, 12000])
+  })
+
+  it('分割後の売却は、換算後の平均取得単価で実現損益を計算する', () => {
+    const r = computeTimeline(
+      splitInput({
+        transactions: [buy(1, '2025-01-01', 2, 6000), sell(1, '2025-01-04', 1, 3500)],
+      }),
+    )
+    const last = r.points[3]
+    expect(last.cumulativeRealizedPL).toBe(500)
+    expect(last.marketValue).toBe(3 * 3300)
+    expect(last.investedPrincipal).toBe(9000)
+  })
+
+  it('分割の無い銘柄の評価額には影響しない', () => {
+    const other = { id: 3, code: '8473', stockName: 'SBI', market: '国内' }
+    const r = computeTimeline(
+      splitInput({
+        stocks: [JP, other],
+        transactions: [buy(1, '2025-01-01', 2, 6000), buy(3, '2025-01-01', 10, 100)],
+        closeMap: new Map([
+          ...closes(1, { '2025-01-01': 3000 }),
+          ...closes(3, { '2025-01-01': 100 }),
+        ]),
+        today: day('2025-01-01'),
+      }),
+    )
+    expect(r.points[0].marketValue).toBe(12000 + 1000)
+  })
+})

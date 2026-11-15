@@ -96,9 +96,45 @@ curl "https://query1.finance.yahoo.com/v8/finance/chart/7203.T?range=1mo&interva
 
 なお [fetchMultipleStockPrices](../src/lib/stock-price.ts) は銘柄を**直列**で処理するため、バックフィルは画面リクエストからではなくバッチ経路で実行する。
 
+#### 株式分割（events=splits）
+
+株式分割・併合の登録（[ADR 0024](7-adr/0024-stock-split-as-separate-record.md)）で、分割の候補と、分割日より前の日次終値の取り直しに使う。同じ chart エンドポイントに `events=splits` を足す。
+
+```
+GET https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range={range}&interval=1d&events=splits
+```
+
+期間内に分割があると `chart.result[0].events.splits` に入る。8473.T を `range=10y` で取った結果：
+
+```json
+"events": {
+  "splits": {
+    "1764201600": { "date": 1764201600, "numerator": 2.0, "denominator": 1.0, "splitRatio": "2:1" }
+  }
+}
+```
+
+- `date` は分割日（UNIX 秒）。上の値は 2025-11-27 09:00 JST
+- `numerator` が分割後、`denominator` が分割前の株数（1 株 → 2 株なら 2 と 1）
+- 期間内に分割が無いと `events` そのものが返らない（8473.T の `range=1mo`）
+- オブジェクトのキーは `date` と一致するとは限らない。7203.T の `range=max` ではキーが `1630422000`、`date` が `1632873600` だった。日付は `date` から読む
+- `range=max` は `interval=1d` を付けても月次で返る（7203.T で 331 件）。日次で返ることを確かめた `range` は `1mo` / `1y` / `2y` / `5y` / `10y`
+
+**日次終値（`indicators.quote[0].close`）は、過去の日のぶんも現在の株数の基準に換算済みの値で返る。** 次の 3 銘柄で、分割日の前後に 1 日で 30% を超える終値の変化が無かった。
+
+| 銘柄 | 分割日 | 比率 | 取った期間 |
+|---|---|---|---|
+| 8473.T | 2025-11-27 | 1 株 → 2 株 | `10y` |
+| 7203.T | 2021-09-29 | 1 株 → 5 株 | `10y` |
+| NVDA | 2024-06-10 | 1 株 → 10 株 | `5y` |
+
+このため、分割より前に保存した日次終値（分割前の基準）と、分割より後に取った日次終値（現在の基準）は混ぜられない。ADR 0024 は、分割を登録するときに分割日より前の行を取り直して置き換える。
+
+> **確認方法と限界**：上の挙動はすべて 2026-11-15 に上記リクエストを実行して実測したもので、仕様として保証されたものではない。確かめたのは 3 銘柄だけで、下の 1306.T のように分割が換算されていない銘柄がありうる。
+
 #### 調整済み終値（adjclose）の信頼性
 
-chart エンドポイントは `indicators.quote[0]` に素の `open` / `close`、`indicators.adjclose[0].adjclose` に株式分割と配当で調整した終値を返す。**この調整は銘柄によって正しくない。**
+chart エンドポイントは `indicators.quote[0]` に配当で調整していない `open` / `close`（株式分割では換算済み。上の「株式分割」参照）、`indicators.adjclose[0].adjclose` に株式分割と配当で調整した終値を返す。**この調整は銘柄によって正しくない。**
 
 - 1306.T（NEXT FUNDS TOPIX 連動型上場投信）の `adjclose` は株式分割が調整されておらず、2015-01-05 に −90.1%、2026-03-30 に −90.2%、2026-04-01 に +947.9% の跳びがある（2026-11-13 に実測）
 - 1348.T（MAXIS TOPIX 上場投信）は 2014-01-06 以降、1 日で 50% を超える変化が無い（同日に実測）

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { createErrorResponse } from '@/lib/api-response'
 
 // アプリ設定（Setting テーブル）へのアクセス。
 // キー・バリュー形式で、真偽値の設定を扱う。
@@ -35,4 +36,17 @@ export async function setBooleanSetting(
     create: { key, value: stringValue },
     update: { value: stringValue },
   })
+}
+
+// 取引履歴の編集・削除（株式分割の削除を含む）が設定で許可されていなければ 403 を返す。
+// 設定がオフのときに直接 API を叩かれてもデータを守るためのサーバー側ガード。
+export async function assertTransactionEditAllowed(): Promise<Response | null> {
+  const allowed = await getBooleanSetting(ALLOW_TRANSACTION_EDIT)
+  if (!allowed) {
+    return Response.json(
+      createErrorResponse('FORBIDDEN', '取引履歴の編集・削除は設定で許可されていません'),
+      { status: 403 },
+    )
+  }
+  return null
 }

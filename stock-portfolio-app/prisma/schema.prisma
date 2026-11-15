@@ -59,6 +59,7 @@ model Stock {
 
   // リレーション
   transactions          Transaction[]
+  stockSplits           StockSplit[]
   dividendHistory       DividendHistory[]
   priceHistory          PriceHistory[]
   dailyPrices           DailyPrice[]
@@ -199,6 +200,29 @@ model Transaction {
   fundamentalSnapshot FundamentalSnapshot?
 
   @@index([stockId, transactionDate])
+}
+
+// 株式分割・併合（ADR 0024）。
+// 取引は約定時点の株数・単価のまま残し、分割はこの行として別に持つ。保有株数と
+// 平均取得単価は、取引の再生の途中で分割日に比率を掛けて求める（Source of truth は
+// Transaction と本テーブル）。
+model StockSplit {
+  id          Int      @id @default(autoincrement())
+  stockId     Int
+  // 分割日（権利落ち日）。株価が分割後の水準に変わる最初の営業日で、この日以降の
+  // 取引は分割後の株数・単価で記録されている。暦日（時刻を持たない。ADR 0012）
+  splitDate   DateTime @db.Date
+  // 分割前 fromShares 株が分割後 toShares 株になる。1 株 → 2 株の分割なら 1 と 2、
+  // 5 株 → 1 株の併合なら 5 と 1。1 株 → 1.5 株のような比率があるため小数を許す
+  fromShares  Decimal  @db.Decimal(10,4)
+  toShares    Decimal  @db.Decimal(10,4)
+  memo        String?
+  createdAt   DateTime @default(now())
+
+  stock       Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  // 同じ銘柄の同じ日に分割を二重に登録すると保有株数が比率の 2 乗で増えるため、型で防ぐ
+  @@unique([stockId, splitDate])
 }
 
 // 配当履歴

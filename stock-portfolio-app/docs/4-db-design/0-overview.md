@@ -69,6 +69,14 @@ stock-portfolio-app/prisma/schema.prisma
 - **`PriceHistory` との違い**: `PriceHistory` は `recordedAt` が任意時刻で場中の値と終値が混在するため時系列の再構成に使えない。日単位のユニーク制約を掛けるために別テーブルとした
 - **`isFilled`**: 非営業日・取得失敗日を直前の営業日の終値で補完したレコードかどうか。実勢とのズレを UI で判別できるよう、補完値を実測値と区別する
 - **取り込み**: [/api/batch/daily-close](../../src/app/api/batch/daily-close/route.ts) が Yahoo Finance の `range` / `interval=1d` でまとめて取得する。既存レコードは上書きしないため重複実行しても安全
+- **株数の基準**: 過去の日のぶんも現在の株数の基準で持つ。株式分割を登録したときだけ、その銘柄の分割日より前の行を Yahoo Finance から取り直して置き換える（ADR 0024）
+
+### StockSplit（株式分割・併合）
+
+- **目的**: 株式分割・併合の記録。Transaction とともに保有株数・平均取得単価の Source of Truth になる（ADR 0024）
+- **特徴**: `(stockId, splitDate)` でユニーク。分割前 `fromShares` 株が分割後 `toShares` 株になる（1 株 → 2 株なら 1 と 2、5 株 → 1 株の併合なら 5 と 1）
+- **`splitDate`**: 分割日（権利落ち日）。この日以降の取引は分割後の株数・単価で記録されているものとして再生する
+- **登録**: 銘柄詳細画面から利用者が登録する。Yahoo Finance が返す分割は候補として表示するだけで、自動では登録しない
 
 ### DividendHistory（配当履歴）
 

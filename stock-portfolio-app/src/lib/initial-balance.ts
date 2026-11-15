@@ -1,5 +1,11 @@
 import { prisma } from '@/lib/prisma'
-import { recalculateStockAggregates, TRANSACTION_REPLAY_ORDER } from '@/lib/stock-aggregation'
+import {
+  recalculateStockAggregates,
+  SPLIT_REPLAY_ORDER,
+  TRANSACTION_REPLAY_ORDER,
+  toReplaySplit,
+  type ReplaySplit,
+} from '@/lib/stock-aggregation'
 import { dateKeyOf, formatDateKey } from '@/lib/date-key'
 
 // 初期残高 Transaction の生成（ADR 0008）。
@@ -49,13 +55,23 @@ export interface InitialBalanceSummary {
   mismatches: Array<{ code: string; field: string; before: number; after: number }>
 }
 
-// 既存の Transaction が説明できている保有株数を返す（平均取得単価法の株数部分のみ）。
+// 既存の Transaction と株式分割が説明できている保有株数を返す（平均取得単価法の株数部分のみ）。
 // stock-aggregation.ts の再計算と同じ順序・同じ打ち切り規則で数える。
+// 分割を数えないと、分割で増えた株数ぶんが「取引で説明できない保有」に見えて
+// 初期残高が余計に作られる（ADR 0024）。
 export function replayShares(
-  transactions: Array<{ transactionType: string; shares: unknown }>,
+  transactions: Array<{ transactionType: string; shares: unknown; transactionDate: Date }>,
+  splits: ReplaySplit[] = [],
 ): number {
   let shares = 0
+  let splitIndex = 0
   for (const tx of transactions) {
+    while (
+      splitIndex < splits.length &&
+      splits[splitIndex].splitDate.getTime() <= tx.transactionDate.getTime()
+    ) {
+      shares *= splits[splitIndex++].ratio
+    }
     const txShares = Number(tx.shares)
     if (tx.transactionType === 'BUY') {
       shares += txShares
@@ -64,6 +80,7 @@ export function replayShares(
       shares = Math.max(0, shares - Math.min(txShares, shares))
     }
   }
+  while (splitIndex < splits.length) shares *= splits[splitIndex++].ratio
   return shares
 }
 
@@ -77,6 +94,8 @@ export interface InitialBalanceCandidate {
   avgAcquisitionPrice: number
   purchaseDate: Date | null
   transactions: Array<{ transactionType: string; shares: number; transactionDate: Date }>
+  // 株式分割・併合（分割日の昇順）。ADR 0024
+  splits?: ReplaySplit[]
 }
 
 export type InitialBalancePlan =
@@ -90,7 +109,7 @@ export type InitialBalancePlan =
   | { kind: 'skip'; reason: string }
 
 export function planInitialBalance(stock: InitialBalanceCandidate): InitialBalancePlan {
-  const explainedShares = replayShares(stock.transactions)
+  const explainedShares = replayShares(stock.transactions, stock.splits)
   const gap = stock.sharesHeld - explainedShares
 
   if (gap <= SHARES_EPSILON) {
@@ -133,7 +152,10 @@ export function planInitialBalance(stock: InitialBalanceCandidate): InitialBalan
 export async function createInitialBalances(apply: boolean): Promise<InitialBalanceSummary> {
   const stocks = await prisma.stock.findMany({
     where: { sharesHeld: { gt: 0 } },
-    include: { transactions: { orderBy: TRANSACTION_REPLAY_ORDER } },
+    include: {
+      transactions: { orderBy: TRANSACTION_REPLAY_ORDER },
+      stockSplits: { orderBy: SPLIT_REPLAY_ORDER },
+    },
   })
 
   const created: InitialBalanceCreated[] = []
@@ -155,6 +177,7 @@ export async function createInitialBalances(apply: boolean): Promise<InitialBala
         shares: Number(tx.shares),
         transactionDate: tx.transactionDate,
       })),
+      splits: stock.stockSplits.map(toReplaySplit),
     })
 
     if (plan.kind === 'skip') {
