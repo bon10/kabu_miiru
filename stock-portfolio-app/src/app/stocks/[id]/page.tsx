@@ -18,7 +18,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { TransactionFormDialog } from '@/components/transactions/transaction-form-dialog'
+import useSWR from 'swr'
+import {
+  TransactionFormDialog,
+  type EditableTransaction,
+} from '@/components/transactions/transaction-form-dialog'
 import { DividendFormDialog } from '@/components/dividends/dividend-form-dialog'
 import { FundamentalCheckCard } from '@/components/stocks/fundamental-check-card'
 import {
@@ -118,11 +122,20 @@ export default function StockDetailPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
+  // 取引履歴の編集ボタンで開いたときの対象。null なら同じダイアログを購入・売却の追加として開く。
+  // ダイアログは対象が変わるたびに入力を初期化するため、描画ごとに作り直さず state で持つ
+  const [editingTransaction, setEditingTransaction] = useState<EditableTransaction | null>(null)
   const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
   // 受取配当履歴の編集ボタンで開いたときの対象。null なら同じダイアログを新規追加として開く
   const [editingDividend, setEditingDividend] = useState<DividendHistory | null>(null)
   const [splitDialogOpen, setSplitDialogOpen] = useState(false)
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
+  const { data: settingsData } = useSWR<{ data: { allowTransactionEdit: boolean } }>(
+    '/api/settings',
+    (url: string) => fetch(url).then((res) => res.json()),
+  )
+  // 取引の編集は、取引履歴の画面と同じ設定で許可する。既定は無効
+  const allowTransactionEdit = settingsData?.data?.allowTransactionEdit ?? false
 
   // 受取配当ダイアログに渡す銘柄候補。配列リテラルを毎レンダー生成すると
   // ダイアログ側の初期化 effect が再発火して入力が消えるため、銘柄が変わる時だけ作り直す。
@@ -279,6 +292,7 @@ export default function StockDetailPage() {
           <Button
             variant="outline"
             onClick={() => {
+              setEditingTransaction(null)
               setDialogType('BUY')
               setDialogOpen(true)
             }}
@@ -290,6 +304,7 @@ export default function StockDetailPage() {
             variant="outline"
             disabled={stock.sharesHeld <= 0}
             onClick={() => {
+              setEditingTransaction(null)
               setDialogType('SELL')
               setDialogOpen(true)
             }}
@@ -345,6 +360,7 @@ export default function StockDetailPage() {
         ]}
         defaultStockId={stock.id}
         defaultType={dialogType}
+        transaction={editingTransaction}
         onSubmitted={() => fetchStock()}
       />
 
@@ -551,6 +567,7 @@ export default function StockDetailPage() {
                   <TableHead className="text-right">手数料</TableHead>
                   <TableHead>取引日</TableHead>
                   <TableHead>メモ</TableHead>
+                  {allowTransactionEdit && <TableHead className="w-10"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -585,6 +602,30 @@ export default function StockDetailPage() {
                       {formatDate(transaction.transactionDate)}
                     </TableCell>
                     <TableCell>{transaction.memo || '-'}</TableCell>
+                    {allowTransactionEdit && (
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingTransaction({
+                              id: transaction.id,
+                              stockId: stock.id,
+                              transactionType: transaction.transactionType,
+                              shares: transaction.shares,
+                              pricePerShare: transaction.pricePerShare,
+                              fee: transaction.fee,
+                              transactionDate: transaction.transactionDate,
+                              memo: transaction.memo,
+                            })
+                            setDialogOpen(true)
+                          }}
+                          aria-label="この取引を編集"
+                        >
+                          <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
