@@ -351,6 +351,7 @@ export default function StockDetailPage() {
         open={splitDialogOpen}
         onOpenChange={setSplitDialogOpen}
         stockId={stock.id}
+        sharesHeld={stock.sharesHeld}
         onChanged={() => fetchStock()}
       />
 
