@@ -94,6 +94,21 @@ async function registerSplit(
 interface StockSplitFormDialogProps extends StockSplitProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  sharesHeld: number
+}
+
+const formatShares = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+
+// 入力した比率で保有株数・平均取得単価がどう変わるかの説明。比率の欄に持っている株数を
+// 入れてしまう誤りに、登録の前に気づけるようにするため。
+// 換算されるのは分割日より前から持っていた株数だけなので、今の保有株数で示す例には
+// 「すべて分割日より前からなら」と条件を付ける。
+function describeRatio(fromShares: number, toShares: number, sharesHeld: number): string | null {
+  if (!(fromShares > 0) || !(toShares > 0)) return null
+  const ratio = toShares / fromShares
+  const summary = `分割日より前から持っていた株数が ${formatShares(ratio)} 倍、平均取得単価が ${formatShares(1 / ratio)} 倍になります。`
+  if (!(sharesHeld > 0)) return summary
+  return `${summary}今の保有 ${formatShares(sharesHeld)} 株がすべて分割日より前からのものなら、${formatShares(sharesHeld * ratio)} 株になります。`
 }
 
 export function StockSplitFormDialog({
@@ -101,6 +116,7 @@ export function StockSplitFormDialog({
   onOpenChange,
   stockId,
   onChanged,
+  sharesHeld,
 }: StockSplitFormDialogProps) {
   const refresh = useRefreshSplits({ stockId, onChanged })
   const [splitDate, setSplitDate] = useState('')
@@ -119,6 +135,8 @@ export function StockSplitFormDialog({
     setMemo('')
     setError(null)
   }, [open])
+
+  const ratioPreview = describeRatio(Number(fromShares), Number(toShares), sharesHeld)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -161,32 +179,40 @@ export function StockSplitFormDialog({
               株価が分割後の水準に変わった最初の営業日です。
             </span>
           </label>
-          <div className="flex items-end gap-3">
-            <label className="flex-1 space-y-1 text-sm">
-              <span className="block font-medium">分割前の株数</span>
+          <fieldset className="space-y-1 text-sm">
+            <legend className="mb-1 font-medium">分割の比率</legend>
+            <div className="flex items-center gap-2">
               <Input
                 type="number"
                 required
                 min="0"
                 step="any"
+                aria-label="分割前の株数"
+                className="w-24"
                 value={fromShares}
                 onChange={(e) => setFromShares(e.target.value)}
               />
-            </label>
-            <span className="pb-2 text-muted-foreground">→</span>
-            <label className="flex-1 space-y-1 text-sm">
-              <span className="block font-medium">分割後の株数</span>
+              <span>株 →</span>
               <Input
                 type="number"
                 required
                 min="0"
                 step="any"
+                aria-label="分割後の株数"
                 placeholder="2"
+                className="w-24"
                 value={toShares}
                 onChange={(e) => setToShares(e.target.value)}
               />
-            </label>
-          </div>
+              <span>株</span>
+            </div>
+            <span className="block text-xs text-muted-foreground">
+              1 株が何株になるかを入れます。1 株 → 2 株の分割なら 1 と 2、5 株 → 1 株の併合なら 5 と 1 です。持っている株数を入れる欄ではありません。
+            </span>
+            {ratioPreview && (
+              <p className="rounded-md bg-muted p-2 text-xs">{ratioPreview}</p>
+            )}
+          </fieldset>
           <label className="block space-y-1 text-sm">
             <span className="block font-medium">メモ</span>
             <Input value={memo} onChange={(e) => setMemo(e.target.value)} />
