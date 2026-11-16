@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Coins, Plus, Trash2 } from 'lucide-react'
+import { Coins, Pencil, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency, formatDate, formatMoney } from '@/lib/utils'
 import {
   DividendFormDialog,
@@ -99,6 +99,8 @@ export default function DividendsClient() {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState(currentYear)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // 編集ボタンで開いたときの対象。null なら同じダイアログを新規追加として開く
+  const [editing, setEditing] = useState<DividendRow | null>(null)
 
   const { data: divData, mutate: mutateDiv } = useSWR<DividendsResponse>(
     `/api/dividends?year=${selectedYear}&limit=500`,
@@ -168,7 +170,10 @@ export default function DividendsClient() {
             </SelectContent>
           </Select>
           <Button
-            onClick={() => setDialogOpen(true)}
+            onClick={() => {
+              setEditing(null)
+              setDialogOpen(true)
+            }}
             className="flex items-center space-x-2"
           >
             <Plus className="h-4 w-4" />
@@ -306,7 +311,7 @@ export default function DividendsClient() {
                   <TableHead>証券会社</TableHead>
                   <TableHead>種別</TableHead>
                   <TableHead className="text-right">受取金額</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="w-20"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -343,7 +348,18 @@ export default function DividendsClient() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditing(d)
+                          setDialogOpen(true)
+                        }}
+                        aria-label="編集"
+                      >
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -369,7 +385,9 @@ export default function DividendsClient() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         stocks={stocks}
+        editing={editing}
         onSubmitted={() => {
+          // 編集で支払日を別の年へ直すと、表示中の年の一覧と集計の両方から外れるため両方取り直す
           mutateDiv()
           mutateSum()
         }}

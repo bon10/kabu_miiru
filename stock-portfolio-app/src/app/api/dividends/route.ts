@@ -5,26 +5,11 @@ import { createSuccessResponse, createErrorResponse, handleApiError } from '@/li
 import { getCurrentUsdJpyRate } from '@/lib/exchange-rate'
 import { toJpyByCurrency } from '@/lib/currency'
 import {
-  calcDividendReceipt,
   netDividendAmount,
-  resolveDividendTax,
+  parseDividendInput,
   toNullableNumber,
-  DIVIDEND_CALC_MESSAGES,
-  DIVIDEND_TAX_MESSAGES,
 } from '@/lib/dividend'
-import { dateKeyOf, toDateKey } from '@/lib/date-key'
-
-// 期末/中間/四半期/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
-// 表示専用ラベルで集計には使わないため任意。証券会社が期を示さず判別できない場合は未指定（NULL）で保存できる。
-const ALLOWED_DIVIDEND_TYPES = ['期末', '中間', '四半期', '特別', '分配金'] as const
-const ALLOWED_CURRENCIES = ['JPY', 'USD'] as const
-
-// 税額合計・受取金額は明細に無ければ空欄で登録できる（ADR 0015）。空文字・null・未指定は
-// 「未入力」として null に寄せ、数値が来たときだけ Number に通す。
-function optionalNumber(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') return null
-  return Number(value)
-}
+import { dateKeyOf } from '@/lib/date-key'
 
 export async function GET(request: NextRequest) {
   try {
@@ -113,53 +98,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-
-    if (
-      !body.stockId ||
-      body.dividendPerShare === undefined ||
-      !body.paymentDate
-    ) {
-      return Response.json(
-        createErrorResponse('BAD_REQUEST', '必須フィールドが不足しています'),
-        { status: 400 },
-      )
-    }
-
-    // 入力は証券会社の配当明細を写したもの（ADR 0015）。単価にあたるのが 1 株あたり配当金で、
-    // 配当・分配金合計は「1 株あたり配当金 × 数量」で後段で確定する。
-    const dividendPerShare = Number(body.dividendPerShare)
-
-    // 配当種別は任意。指定された場合のみ許可値を検証し、未指定は NULL として保存する。
-    const dividendType =
-      body.dividendType === undefined || body.dividendType === null || body.dividendType === ''
-        ? null
-        : body.dividendType
-    if (dividendType !== null && !ALLOWED_DIVIDEND_TYPES.includes(dividendType)) {
-      return Response.json(
-        createErrorResponse(
-          'BAD_REQUEST',
-          `配当種別は ${ALLOWED_DIVIDEND_TYPES.join(' / ')} のいずれかを指定してください`,
-        ),
-        { status: 400 },
-      )
-    }
-
-    // 受取通貨。未指定なら従来どおり円建てとして扱う。
-    const currency = body.currency ?? 'JPY'
-    if (!ALLOWED_CURRENCIES.includes(currency)) {
-      return Response.json(
-        createErrorResponse(
-          'BAD_REQUEST',
-          `通貨は ${ALLOWED_CURRENCIES.join(' / ')} のいずれかを指定してください`,
-        ),
-        { status: 400 },
-      )
+    // 入力は証券会社の配当明細を写したもの（ADR 0015）。検証と保存値の組み立ては
+    // 更新 API（PUT /api/dividends/[id]）と同じ関数を通す。
+    const input = parseDividendInput(await request.json())
+    if (!input.ok) {
+      return Response.json(createErrorResponse('BAD_REQUEST', input.message), { status: 400 })
     }
 
     // 銘柄の存在確認のみ。配当合計に掛ける株数は明細の数量なので、保有株数は参照しない
     const stock = await prisma.stock.findUnique({
-      where: { id: body.stockId },
+      where: { id: input.data.stockId },
       select: { id: true },
     })
     if (!stock) {
@@ -169,45 +117,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 数量は明細の「数量」を写す（ADR 0015）。現在の保有株数（Stock.sharesHeld）は使わない。
-    // 配当額は権利確定日の株数で決まるのに対し、登録時点の保有株数は権利確定後の売買を
-    // 織り込んだ別の数字で、掛けると明細と違う配当合計を保存してしまうため。
-    // 未指定は保有株数で補わず NO_SHARES で弾く（補うと上記の取り違えが復活する）。
-    const shares = Number(body.shares)
-    const calc = calcDividendReceipt(dividendPerShare, shares)
-    if (!calc.ok) {
-      return Response.json(
-        createErrorResponse('BAD_REQUEST', DIVIDEND_CALC_MESSAGES[calc.error]),
-        { status: 400 },
-      )
-    }
-    const dividendAmount = calc.total
-
-    // 税額合計・受取金額は片方だけの入力でよい（もう片方は配当合計から引いて埋まる）。
-    // 両方空欄なら税額不明として NULL のまま保存する。
-    const tax = resolveDividendTax(
-      dividendAmount,
-      optionalNumber(body.taxAmount),
-      optionalNumber(body.netAmount),
-    )
-    if (!tax.ok) {
-      return Response.json(
-        createErrorResponse('BAD_REQUEST', DIVIDEND_TAX_MESSAGES[tax.error]),
-        { status: 400 },
-      )
-    }
-
     const created = await prisma.dividendHistory.create({
-      data: {
-        stockId: body.stockId,
-        dividendAmount,
-        shares,
-        taxAmount: tax.tax,
-        netAmount: tax.net,
-        currency,
-        paymentDate: toDateKey(new Date(body.paymentDate)),
-        dividendType,
-      },
+      data: input.data,
       include: {
         stock: {
           select: { stockName: true, code: true, holdingCompany: true },
