@@ -959,6 +959,42 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    put:
+      tags: [dividends]
+      summary: 受取配当更新
+      description: >-
+        登録済みの受取配当 1 件を、証券会社の配当明細から入れ直した値で置き換える（入力ミスの訂正用）。
+        受け取る項目と検証は受取配当追加（POST /dividends）と同じで、配当・分配金合計は
+        「1 株あたり配当金 × 数量」で確定し直す（ADR 0015）。stockId を変えると別の銘柄の記録に付け替わる。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DividendInput'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DividendWithStock'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
     delete:
       tags: [dividends]
       summary: 受取配当削除
@@ -2180,7 +2216,7 @@ components:
           type: string
           format: date-time
 
-    # 受取配当エンドポイント（単体取得・追加）が返す形。銘柄名を添え、createdAt は返さない。
+    # 受取配当エンドポイント（単体取得・追加・更新）が返す形。銘柄名を添え、createdAt は返さない。
     DividendWithStock:
       allOf:
         - $ref: '#/components/schemas/DividendHistory'
