@@ -9,6 +9,7 @@ import {
   Plus,
   Minus,
   Coins,
+  Pencil,
   RefreshCw,
   Split,
   TrendingUp,
@@ -118,6 +119,8 @@ export default function StockDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<'BUY' | 'SELL'>('BUY')
   const [dividendDialogOpen, setDividendDialogOpen] = useState(false)
+  // 受取配当履歴の編集ボタンで開いたときの対象。null なら同じダイアログを新規追加として開く
+  const [editingDividend, setEditingDividend] = useState<DividendHistory | null>(null)
   const [splitDialogOpen, setSplitDialogOpen] = useState(false)
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
 
@@ -294,7 +297,13 @@ export default function StockDetailPage() {
             <Minus className="h-4 w-4 mr-2" />
             売却
           </Button>
-          <Button variant="outline" onClick={() => setDividendDialogOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setEditingDividend(null)
+              setDividendDialogOpen(true)
+            }}
+          >
             <Coins className="h-4 w-4 mr-2" />
             受取配当を追加
           </Button>
@@ -344,6 +353,7 @@ export default function StockDetailPage() {
         onOpenChange={setDividendDialogOpen}
         stocks={dividendStockOptions}
         defaultStockId={stock.id}
+        editing={editingDividend && { ...editingDividend, stockId: stock.id }}
         onSubmitted={() => fetchStock()}
       />
 
@@ -604,6 +614,7 @@ export default function StockDetailPage() {
                   <TableHead className="text-right">税額</TableHead>
                   <TableHead className="text-right">受取金額</TableHead>
                   <TableHead>支払日</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -629,6 +640,19 @@ export default function StockDetailPage() {
                       )}
                     </TableCell>
                     <TableCell>{formatDate(dividend.paymentDate)}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingDividend(dividend)
+                          setDividendDialogOpen(true)
+                        }}
+                        aria-label="編集"
+                      >
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

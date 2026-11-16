@@ -9,6 +9,8 @@
 // 計算は受取通貨（JPY / USD）建てのまま行い、円換算はしない（換算は読み取り時：ADR 0006）。
 // API・入力フォームの双方から呼び、計算とバリデーションを 1 箇所に集約する。
 
+import { toDateKey } from './date-key'
+
 // DividendHistory の金額列はいずれも Decimal(15,2)。掛け算・引き算の浮動小数点誤差
 // （例：2.3 × 50 = 114.9999…）を残さないよう、格納精度に合わせて小数第2位で丸める。
 function round2(value: number): number {
@@ -106,4 +108,124 @@ export function toNullableNumber(
   value: { toString(): string } | null | undefined,
 ): number | null {
   return value === null || value === undefined ? null : Number(value)
+}
+
+// 期末/中間/四半期/特別は個別株の配当区分。分配金は ETF・投資信託の分配（毎月分配型など）向け。
+// 表示専用ラベルで集計には使わない。
+export const DIVIDEND_TYPES = ['期末', '中間', '四半期', '特別', '分配金'] as const
+export type DividendType = (typeof DIVIDEND_TYPES)[number]
+
+export const DIVIDEND_TYPE_MESSAGE = `配当種別は ${DIVIDEND_TYPES.join(' / ')} のいずれかを指定してください`
+
+export type DividendTypeResult = { ok: true; type: DividendType | null } | { ok: false }
+
+// API が受け取った配当種別を検証する。配当種別は任意項目で、証券会社が期を示さず
+// 判別できない場合があるため、未指定（undefined / null / 空文字）は種別なしの null として通す。
+export function parseDividendType(value: unknown): DividendTypeResult {
+  if (value === undefined || value === null || value === '') return { ok: true, type: null }
+  const type = DIVIDEND_TYPES.find((t) => t === value)
+  return type ? { ok: true, type } : { ok: false }
+}
+
+// 保存済みの配当合計と数量から、編集フォームの単価欄に入れる値を逆算する。
+// 単価（1 株あたり配当金）は保存していない（ADR 0015）ため、登録時に入力された単価そのものは
+// 復元できない。代わりに「数量を掛け直すと保存済みの配当合計と同じ値になる最短の小数」を返す。
+// 単価に手を触れず支払日だけを直して保存したときに、配当合計が変わらないことを保証するため。
+// 数量を持たない旧レコード（shares が null）は逆算できないので null を返す。
+export function perShareFromTotal(total: number, shares: number | null): number | null {
+  if (shares === null || !Number.isFinite(shares) || shares <= 0) return null
+  const exact = total / shares
+  for (let digits = 0; digits <= 10; digits++) {
+    const candidate = Number(exact.toFixed(digits))
+    if (round2(candidate * shares) === total) return candidate
+  }
+  return exact
+}
+
+export const DIVIDEND_CURRENCIES = ['JPY', 'USD'] as const
+export type DividendCurrency = (typeof DIVIDEND_CURRENCIES)[number]
+
+// DividendHistory に保存する値一式。追加と更新で同じ形を保存する。
+export interface DividendRecordData {
+  stockId: number
+  dividendAmount: number
+  shares: number
+  taxAmount: number | null
+  netAmount: number | null
+  currency: DividendCurrency
+  paymentDate: Date
+  dividendType: DividendType | null
+}
+
+export type DividendInputResult =
+  | { ok: true; data: DividendRecordData }
+  | { ok: false; message: string }
+
+// 税額合計・受取金額は明細に無ければ空欄で登録できる（ADR 0015）。空文字・null・未指定は
+// 「未入力」として null に寄せ、数値が来たときだけ Number に通す。
+function optionalNumber(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null
+  return Number(value)
+}
+
+// 受取配当の追加・更新 API が受け取ったリクエスト本文を検証し、保存する値を組み立てる。
+// 入力は証券会社の配当明細を写したもの（ADR 0015）で、追加と更新で同じ項目・同じ検証を使う。
+// 銘柄が DB に存在するかはここでは見ない（呼び出し側の API が確認する）。
+export function parseDividendInput(body: Record<string, unknown>): DividendInputResult {
+  if (!body.stockId || body.dividendPerShare === undefined || !body.paymentDate) {
+    return { ok: false, message: '必須フィールドが不足しています' }
+  }
+
+  const stockId = Number(body.stockId)
+  if (!Number.isInteger(stockId)) {
+    return { ok: false, message: '銘柄の指定が不正です' }
+  }
+
+  const parsedType = parseDividendType(body.dividendType)
+  if (!parsedType.ok) return { ok: false, message: DIVIDEND_TYPE_MESSAGE }
+
+  // 受取通貨。未指定なら円建てとして扱う。
+  const currency = DIVIDEND_CURRENCIES.find((c) => c === (body.currency ?? 'JPY'))
+  if (!currency) {
+    return {
+      ok: false,
+      message: `通貨は ${DIVIDEND_CURRENCIES.join(' / ')} のいずれかを指定してください`,
+    }
+  }
+
+  const instant = new Date(String(body.paymentDate))
+  if (Number.isNaN(instant.getTime())) {
+    return { ok: false, message: '支払日は YYYY-MM-DD で指定してください' }
+  }
+
+  // 数量は明細の「数量」を写す（ADR 0015）。現在の保有株数（Stock.sharesHeld）は使わない。
+  // 配当額は権利確定日の株数で決まるのに対し、登録時点の保有株数は権利確定後の売買を
+  // 織り込んだ別の数字で、掛けると明細と違う配当合計を保存してしまうため。
+  // 未指定は保有株数で補わず NO_SHARES で弾く（補うと上記の取り違えが復活する）。
+  const shares = Number(body.shares)
+  const calc = calcDividendReceipt(Number(body.dividendPerShare), shares)
+  if (!calc.ok) return { ok: false, message: DIVIDEND_CALC_MESSAGES[calc.error] }
+
+  // 税額合計・受取金額は片方だけの入力でよい（もう片方は配当合計から引いて埋まる）。
+  // 両方空欄なら税額不明として NULL のまま保存する。
+  const tax = resolveDividendTax(
+    calc.total,
+    optionalNumber(body.taxAmount),
+    optionalNumber(body.netAmount),
+  )
+  if (!tax.ok) return { ok: false, message: DIVIDEND_TAX_MESSAGES[tax.error] }
+
+  return {
+    ok: true,
+    data: {
+      stockId,
+      dividendAmount: calc.total,
+      shares,
+      taxAmount: tax.tax,
+      netAmount: tax.net,
+      currency,
+      paymentDate: toDateKey(instant),
+      dividendType: parsedType.type,
+    },
+  }
 }

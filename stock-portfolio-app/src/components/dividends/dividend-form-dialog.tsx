@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { todayInput } from '@/lib/date-key'
+import { formatDateKey, todayInput } from '@/lib/date-key'
 import {
   Dialog,
   DialogContent,
@@ -26,10 +26,14 @@ import {
 import { formatMoney } from '@/lib/utils'
 import {
   calcDividendReceipt,
+  perShareFromTotal,
   resolveDividendTax,
   DIVIDEND_CALC_MESSAGES,
   DIVIDEND_TAX_MESSAGES,
+  DIVIDEND_TYPES,
+  type DividendType,
 } from '@/lib/dividend'
+import { DividendTypeSelect } from '@/components/dividends/dividend-type-select'
 
 export interface DividendStockOption extends StockSelectOption {
   // 受取通貨の初期値を決めるためだけに持つ（米国株はドル受取が既定）。
@@ -42,9 +46,6 @@ function toOptionalNumber(input: string): number | null {
   return input.trim() === '' ? null : Number(input)
 }
 
-// 配当種別は表示専用ラベルで集計には使わない。証券会社が期を示さず判別できないこともあるため未指定を許す。
-const DIVIDEND_TYPE_UNSPECIFIED = '__none__'
-type DividendType = '期末' | '中間' | '四半期' | '特別' | '分配金'
 type Currency = 'JPY' | 'USD'
 
 // 銘柄の市場から受取通貨の初期値を決める（米国株はドル受取が既定）。
@@ -53,19 +54,44 @@ function defaultCurrencyForMarket(market: string | undefined): Currency {
   return market === '米国' ? 'USD' : 'JPY'
 }
 
+// 編集対象の受取配当。API が返す保存済みの値そのまま（金額は受取通貨建て）。
+export interface EditableDividend {
+  id: number
+  stockId: number
+  dividendAmount: number
+  // ADR 0015 より前に登録した記録は shares / taxAmount / netAmount を持たず null
+  shares: number | null
+  taxAmount: number | null
+  netAmount: number | null
+  currency: string
+  paymentDate: string
+  dividendType: string | null
+}
+
+// 数値を入力欄の文字列に直す。null（値なし）は空欄にする。
+function toInputValue(value: number | null): string {
+  return value === null ? '' : String(value)
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   stocks: DividendStockOption[]
   defaultStockId?: number
+  // 渡すと、その記録を直す編集フォームになる（保存先が更新 API に変わる）。
+  // 渡さない・null のときは新規追加フォーム。
+  editing?: EditableDividend | null
   onSubmitted?: () => void
 }
 
+// 受取配当の追加と編集で共用するフォーム。入力項目と検証は同じで、
+// 違いは「開いたときの初期値」と「保存先の API」だけ。
 export function DividendFormDialog({
   open,
   onOpenChange,
   stocks,
   defaultStockId,
+  editing = null,
   onSubmitted,
 }: Props) {
   const [stockId, setStockId] = useState<string>(
@@ -85,10 +111,8 @@ export function DividendFormDialog({
   const [paymentDate, setPaymentDate] = useState(() =>
     todayInput()
   )
-  // 未指定は DIVIDEND_TYPE_UNSPECIFIED。Radix Select は空文字の値を持てないためセンチネルで表す。
-  const [dividendType, setDividendType] = useState<
-    DividendType | typeof DIVIDEND_TYPE_UNSPECIFIED
-  >(DIVIDEND_TYPE_UNSPECIFIED)
+  // null は未指定。サーバー側で種別なし（NULL）として保存される。
+  const [dividendType, setDividendType] = useState<DividendType | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,10 +122,32 @@ export function DividendFormDialog({
   defaultStockIdRef.current = defaultStockId
   const stocksRef = useRef(stocks)
   stocksRef.current = stocks
+  const editingRef = useRef(editing)
+  editingRef.current = editing
 
   // フォームの初期化はダイアログが開いた瞬間だけ行う（open が false→true に変わったとき）。
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    const target = editingRef.current
+    if (target) {
+      // 編集：保存済みの値で埋める。単価は保存していない（ADR 0015）ため配当合計と数量から
+      // 逆算する。数量を持たない旧レコードは逆算できないので、単価・数量とも空欄から入れ直す。
+      setStockId(String(target.stockId))
+      setDividendPerShare(
+        toInputValue(perShareFromTotal(target.dividendAmount, target.shares))
+      )
+      setShares(toInputValue(target.shares))
+      setTaxAmount(toInputValue(target.taxAmount))
+      setNetAmount(toInputValue(target.netAmount))
+      setCurrency(target.currency === 'USD' ? 'USD' : 'JPY')
+      // 保存済みの通貨を、銘柄の選び直しで市場の既定値に上書きさせない
+      setCurrencyTouched(true)
+      setPaymentDate(formatDateKey(new Date(target.paymentDate)))
+      setDividendType(
+        DIVIDEND_TYPES.find((t) => t === target.dividendType) ?? null
+      )
+      setError(null)
+    } else {
       const initialStockId = defaultStockIdRef.current
       setStockId(initialStockId ? String(initialStockId) : '')
       setDividendPerShare('')
@@ -116,7 +162,7 @@ export function DividendFormDialog({
       setCurrency(defaultCurrencyForMarket(initialMarket))
       setCurrencyTouched(false)
       setPaymentDate(todayInput())
-      setDividendType(DIVIDEND_TYPE_UNSPECIFIED)
+      setDividendType(null)
       setError(null)
     }
   }, [open])
@@ -165,24 +211,26 @@ export function DividendFormDialog({
 
     setSubmitting(true)
     try {
-      const res = await fetch('/api/dividends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stockId: Number(stockId),
-          // 明細の写しをそのまま送る。配当合計・税額・受取金額の確定はサーバー側でも
-          // 同じ純粋関数を通すため、ここでは入力値だけを渡す。
-          dividendPerShare: perShareValue,
-          shares: sharesValue,
-          taxAmount: toOptionalNumber(taxAmount),
-          netAmount: toOptionalNumber(netAmount),
-          currency,
-          paymentDate,
-          // 未指定センチネルは送らず null にして、サーバー側で種別なし（NULL）として保存させる。
-          dividendType:
-            dividendType === DIVIDEND_TYPE_UNSPECIFIED ? null : dividendType,
-        }),
-      })
+      // 追加と編集で送る項目は同じ。編集は更新 API に送る
+      const res = await fetch(
+        editing ? `/api/dividends/${editing.id}` : '/api/dividends',
+        {
+          method: editing ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stockId: Number(stockId),
+            // 明細の写しをそのまま送る。配当合計・税額・受取金額の確定はサーバー側でも
+            // 同じ純粋関数を通すため、ここでは入力値だけを渡す。
+            dividendPerShare: perShareValue,
+            shares: sharesValue,
+            taxAmount: toOptionalNumber(taxAmount),
+            netAmount: toOptionalNumber(netAmount),
+            currency,
+            paymentDate,
+            dividendType,
+          }),
+        }
+      )
       const json = await res.json()
       if (!res.ok) {
         setError(json?.error?.message ?? '保存に失敗しました')
@@ -203,9 +251,15 @@ export function DividendFormDialog({
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>受取配当を追加</DialogTitle>
+            <DialogTitle>
+              {editing ? '受取配当を編集' : '受取配当を追加'}
+            </DialogTitle>
             <DialogDescription>
-              証券会社の配当明細をそのまま写します。数量は現在の保有株数ではなく明細の数量を入力してください（配当は権利確定日の株数で決まるため）。税額合計か受取金額のどちらかを入れると残りが埋まります。
+              {editing
+                ? editing.shares === null
+                  ? 'この記録には数量が保存されていないため、単価と数量を証券会社の配当明細から入れ直してください。'
+                  : '間違えた項目を直して保存します。単価は保存していないため、配当・分配金合計 ÷ 数量で逆算した値が入っています。'
+                : '証券会社の配当明細をそのまま写します。数量は現在の保有株数ではなく明細の数量を入力してください（配当は権利確定日の株数で決まるため）。税額合計か受取金額のどちらかを入れると残りが埋まります。'}
             </DialogDescription>
           </DialogHeader>
 
@@ -328,30 +382,10 @@ export function DividendFormDialog({
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">配当種別（任意）</label>
-              <Select
+              <DividendTypeSelect
                 value={dividendType}
-                onValueChange={(v) =>
-                  setDividendType(
-                    v as DividendType | typeof DIVIDEND_TYPE_UNSPECIFIED
-                  )
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DIVIDEND_TYPE_UNSPECIFIED}>
-                    未指定
-                  </SelectItem>
-                  <SelectItem value="期末">期末</SelectItem>
-                  <SelectItem value="中間">中間</SelectItem>
-                  <SelectItem value="四半期">
-                    四半期（米国株など年4回）
-                  </SelectItem>
-                  <SelectItem value="特別">特別</SelectItem>
-                  <SelectItem value="分配金">分配金（ETF・投信）</SelectItem>
-                </SelectContent>
-              </Select>
+                onValueChange={setDividendType}
+              />
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
