@@ -247,10 +247,12 @@ export function TransactionFormDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">手数料</label>
+                {/* 米国株の手数料はドル建てで 0.1 ドルのような端数が出るため、
+                    DB の fee 列（Decimal(15,2)）と同じ小数2桁まで受け付ける */}
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step="1"
+                  step="0.01"
                   min="0"
                   value={fee}
                   onChange={(e) => setFee(e.target.value)}
